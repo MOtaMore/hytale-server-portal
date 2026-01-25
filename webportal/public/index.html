@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hytale Panel</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Initial Setup Screen - Shown on first run -->
+    <div id="initial-setup" class="setup-overlay" style="display: none;">
+      <div class="setup-container">
+        <div class="setup-header">
+          <h1 data-i18n="setup_welcome">Bienvenido a Hytale Server Portal</h1>
+        </div>
+        
+        <!-- Step 1: Language Selection -->
+        <div id="setup-step-1" class="setup-step">
+          <h2 data-i18n="setup_select_language">Selecciona tu idioma</h2>
+          <div class="language-selector">
+            <button class="lang-btn" data-lang="es">
+              <span class="flag">🇪🇸</span>
+              <span>Español</span>
+            </button>
+            <button class="lang-btn" data-lang="en">
+              <span class="flag">🇬🇧</span>
+              <span>English</span>
+            </button>
+            <button class="lang-btn" data-lang="pt">
+              <span class="flag">🇧🇷</span>
+              <span>Português</span>
+            </button>
+            <button class="lang-btn" data-lang="fr">
+              <span class="flag">🇫🇷</span>
+              <span>Français</span>
+            </button>
+            <button class="lang-btn" data-lang="zh">
+              <span class="flag">🇨🇳</span>
+              <span>中文</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Step 2: Create Administrator Account -->
+        <div id="setup-step-2" class="setup-step" style="display: none;">
+          <h2 data-i18n="setup_create_account">Crear Cuenta de Administrador</h2>
+          <div class="setup-form">
+            <div class="form-group">
+              <label data-i18n="setup_username">Usuario</label>
+              <input type="text" id="setup-username" required />
+            </div>
+            <div class="form-group">
+              <label data-i18n="setup_password">Contraseña</label>
+              <input type="password" id="setup-password" required />
+            </div>
+            <div class="form-group">
+              <label data-i18n="setup_confirm_password">Confirmar Contraseña</label>
+              <input type="password" id="setup-confirm-password" required />
+            </div>
+            <div class="setup-error" id="setup-error"></div>
+            <button id="setup-finish-btn" class="primary large" data-i18n="setup_finish">
+              Finalizar Instalación
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>Hytale</h1>
+          <span data-i18n="brand_subtitle">Panel Privado</span>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-view="dashboard" data-i18n="nav_dashboard">Panel</button>
+          <button class="nav-item" data-view="server-config" data-i18n="nav_server_config">Servidor</button>
+          <button class="nav-item" data-view="setup" data-i18n="nav_setup">Setup</button>
+          <button class="nav-item" data-view="files" data-i18n="nav_files">Gestor</button>
+          <button class="nav-item" data-view="backups" data-i18n="nav_backups">Backups</button>
+          <button class="nav-item" data-view="config" data-i18n="nav_config">Config</button>
+          <button class="nav-item" data-view="discord" data-i18n="nav_discord">Discord</button>
+        </nav>
+        <div class="auth-box" id="auth-box">
+          <div class="auth-title" data-i18n="auth_title">Acceso</div>
+          <input id="login-user" type="text" placeholder="Usuario" data-i18n-placeholder="auth_username_placeholder" />
+          <input id="login-pass" type="password" placeholder="Contraseña" data-i18n-placeholder="auth_password_placeholder" />
+          <button id="login-btn" class="primary" data-i18n="auth_login">Entrar</button>
+          <small id="login-error"></small>
+        </div>
+      </aside>
+      <main class="content">
+        <section class="view active" id="view-dashboard">
+          <div class="header">
+            <h2 data-i18n="dashboard_title">Control del Servidor</h2>
+            <div class="actions">
+              <button id="start-btn" class="primary" data-i18n="dashboard_start">Iniciar</button>
+              <button id="stop-btn" class="danger" data-i18n="dashboard_stop">Detener</button>
+            </div>
+          </div>
+          <div class="status" id="status-box">
+            <span class="dot" id="status-dot"></span>
+            <span id="status-text" data-i18n="dashboard_status_offline">Estado: --</span>
+            <span id="status-extra"></span>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <h3 data-i18n="dashboard_ram">RAM del servidor</h3>
+              <div class="metric" id="ram-metric">--</div>
+              <div class="progress">
+                <div class="progress-bar" id="ram-bar"></div>
+              </div>
+            </div>
+            <div class="card">
+              <h3 data-i18n="dashboard_cpu">CPU del servidor</h3>
+              <div class="metric" id="cpu-metric">--</div>
+              <div class="progress">
+                <div class="progress-bar" id="cpu-bar"></div>
+              </div>
+            </div>
+            <div class="card">
+              <h3 data-i18n="dashboard_storage">Almacenamiento</h3>
+              <div class="metric" id="storage-metric">--</div>
+              <div class="progress">
+                <div class="progress-bar" id="storage-bar"></div>
+              </div>
+              <small id="storage-detail"></small>
+            </div>
+          </div>
+          <div class="terminal-section">
+            <div class="terminal-header">
+              <h3 data-i18n="dashboard_logs_title">Logs del Servidor</h3>
+              <button id="logs-refresh" class="small-btn" data-i18n="common_refresh">Actualizar</button>
+            </div>
+            <pre id="server-logs" class="server-logs" data-i18n="dashboard_loading_logs">Cargando logs...</pre>
+            <div class="command-box">
+                <input id="command-input" type="text" placeholder="Escribe un comando para el servidor..." data-i18n-placeholder="dashboard_command_placeholder" />
+                <button id="command-send" class="primary" data-i18n="dashboard_send_command">Enviar</button>
+            </div>
+          </div>
+          <div class="log" id="action-log"></div>
+        </section>
+
+        <!-- Panel de Configuración del Servidor -->
+        <section class="view" id="view-server-config">
+          <div class="header">
+            <h2 data-i18n="server_config_title">Configuración del Servidor</h2>
+          </div>
+          <div class="config-container">
+            <div class="config-card">
+              <h3 data-i18n="server_config_resources">Configuración de Recursos</h3>
+              <div class="form-group">
+                <label for="config-threads" data-i18n="server_config_threads">Hilos de CPU</label>
+                <input type="number" id="config-threads" min="1" max="32" value="4" />
+                <small data-i18n="server_config_threads_help">Número de hilos de CPU para el servidor (1-32)</small>
+              </div>
+              <div class="form-group">
+                <label for="config-ram-min" data-i18n="server_config_ram_min">RAM Mínima (MB)</label>
+                <input type="number" id="config-ram-min" min="512" step="512" value="2048" />
+                <small data-i18n="server_config_ram_min_help">Memoria RAM mínima en megabytes (Xms)</small>
+              </div>
+              <div class="form-group">
+                <label for="config-ram-max" data-i18n="server_config_ram_max">RAM Máxima (MB)</label>
+                <input type="number" id="config-ram-max" min="1024" step="512" value="4096" />
+                <small data-i18n="server_config_ram_max_help">Memoria RAM máxima en megabytes (Xmx)</small>
+              </div>
+              <button id="save-server-config" class="primary" data-i18n="server_config_save">
+                Guardar Configuración
+              </button>
+              <div id="server-config-message" class="config-message"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-setup">
+          <div class="header">
+            <h2 data-i18n="setup_page_title">Setup del Servidor Hytale</h2>
+            <div class="actions">
+              <button id="setup-refresh" class="small-btn" data-i18n="common_refresh">Actualizar</button>
+            </div>
+          </div>
+          
+          <div class="setup-container">
+            <div class="card">
+              <h3 data-i18n="setup_downloader_status">Estado del Descargador</h3>
+              <div class="setup-status">
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_downloader_installed_label">Descargador instalado:</span>
+                  <span class="dot" id="downloader-exists-dot"></span>
+                  <span id="downloader-exists-text">--</span>
+                </div>
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_downloader_version_label">Versión del downloader:</span>
+                  <span id="downloader-version">--</span>
+                </div>
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_game_version_label">Versión del juego disponible:</span>
+                  <span id="game-version">--</span>
+                </div>
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_server_installed_label">Servidor instalado:</span>
+                  <span class="dot" id="server-installed-dot"></span>
+                  <span id="server-installed-text">--</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 data-i18n="setup_downloader_auth_title">Autenticación del Descargador</h3>
+              <p class="card-description" data-i18n="setup_downloader_auth_description">
+                Antes de descargar el servidor, autoriza el descargador con tu cuenta de Hytale (OAuth Device Flow).
+              </p>
+              <div class="actions">
+                <button id="downloader-auth-btn" class="primary" data-i18n="setup_downloader_auth_start">Obtener código de autenticación</button>
+                <button id="downloader-auth-cancel" class="small-btn" data-i18n="common_cancel">Cancelar</button>
+              </div>
+              <div class="auth-status-box">
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_device_code_label">Código de dispositivo:</span>
+                  <span id="downloader-auth-code" class="code-chip">--</span>
+                </div>
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_verify_url_label">URL de verificación:</span>
+                  <a id="downloader-auth-url" href="#" target="_blank">--</a>
+                </div>
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_auth_status_label">Estado de autenticación:</span>
+                  <span class="dot" id="downloader-auth-dot"></span>
+                  <span id="downloader-auth-status" data-i18n="setup_auth_status_pending">Sin iniciar</span>
+                </div>
+              </div>
+              <small id="downloader-auth-message"></small>
+            </div>
+
+            <div class="card">
+              <h3 data-i18n="setup_download_server">Descargar Servidor</h3>
+              <p class="card-description" data-i18n="setup_download_description">
+                Usa el descargador de Hytale para obtener los archivos más recientes del servidor. Esta descarga puede tardar varios minutos dependiendo de tu conexión.
+              </p>
+              <div class="actions">
+                  <button id="download-server-btn" class="primary" data-i18n="setup_download_server">Descargar Servidor</button>
+              </div>
+              <small id="download-status"></small>
+            </div>
+
+            <div class="card">
+              <h3 data-i18n="setup_server_auth_title">Autenticación del Servidor</h3>
+              <p class="card-description" data-i18n="setup_server_auth_description">
+                Los servidores de Hytale requieren autenticación OAuth2 para funcionar. Después de descargar el servidor, debes autenticarlo antes de poder iniciarlo.
+              </p>
+              
+              <div class="auth-status-box">
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_auth_status_label">Estado de autenticación:</span>
+                  <span class="dot" id="auth-status-dot"></span>
+                  <span id="auth-status-text" data-i18n="setup_auth_status_not_configured">No configurado</span>
+                </div>
+                <div class="status-item">
+                  <span class="label" data-i18n="setup_auth_mode_label">Modo de autenticación:</span>
+                  <span id="auth-mode-text">--</span>
+                </div>
+              </div>
+
+              <div class="auth-instructions">
+                <h4 data-i18n="setup_auth_instructions_title">Instrucciones para autenticar:</h4>
+                <ol class="instructions">
+                  <li data-i18n="setup_auth_instruction_1">Asegúrate de que el servidor esté descargado</li>
+                  <li data-i18n="setup_auth_instruction_2">Inicia el servidor desde el Panel de Control</li>
+                  <li data-i18n="setup_auth_instruction_3">En la consola del servidor (sección "Logs del Servidor"), ejecuta el comando: /auth login device</li>
+                  <li data-i18n="setup_auth_instruction_4">El servidor mostrará un código de dispositivo y una URL</li>
+                  <li data-i18n="setup_auth_instruction_5">Visita https://accounts.hytale.com/device</li>
+                  <li data-i18n="setup_auth_instruction_6">Ingresa el código mostrado en los logs</li>
+                  <li data-i18n="setup_auth_instruction_7">La autenticación se completará automáticamente y podrás usar el servidor</li>
+                </ol>
+              </div>
+
+              <div class="auth-tips">
+                <h4 data-i18n="setup_auth_tips_title">💡 Consejos:</h4>
+                <ul>
+                  <li data-i18n="setup_auth_tip_1">Necesitas tener una cuenta de Hytale válida</li>
+                  <li data-i18n="setup_auth_tip_2">Hay un límite de 100 servidores por licencia de juego</li>
+                  <li data-i18n="setup_auth_tip_3">La autenticación es permanente una vez completada</li>
+                  <li data-i18n="setup_auth_tip_4">Si necesitas más servidores, considera obtener una cuenta de proveedor de servidores</li>
+                </ul>
+              </div>
+
+              <small id="auth-message"></small>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-files">
+          <div class="header">
+            <h2 data-i18n="files_title">Gestor de Archivos</h2>
+            <div class="actions">
+              <input type="file" id="upload-input" />
+              <button id="upload-btn" class="primary" data-i18n="files_upload_btn">Subir</button>
+              <button id="refresh-btn" data-i18n="common_refresh">Actualizar</button>
+            </div>
+          </div>
+          <div class="path" id="current-path">/</div>
+          <div class="file-grid" id="file-grid"></div>
+          <div class="editor" id="file-editor">
+            <h3 id="editor-title" data-i18n="files_editor_title">Editor</h3>
+            <textarea id="editor-content"></textarea>
+            <div class="actions">
+              <button id="editor-save" class="primary" data-i18n="common_save">Guardar</button>
+              <button id="editor-close" data-i18n="common_close">Cerrar</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-backups">
+          <div class="header">
+            <h2 data-i18n="backup_title">Respaldos</h2>
+            <div class="actions">
+              <button id="backup-refresh" data-i18n="backup_refresh">Actualizar</button>
+              <button id="backup-create" class="primary" data-i18n="backup_create">Crear Respaldo</button>
+            </div>
+          </div>
+
+          <!-- Backup Location Configuration Section -->
+          <div class="config-card">
+            <h3 data-i18n="backup_location">Ubicación de Backups</h3>
+            <div class="form-group">
+              <label data-i18n="backup_current_location">Ubicación actual:</label>
+              <input type="text" id="backup-location" disabled>
+            </div>
+            <div class="form-group">
+              <button id="backup-change-location" class="secondary" data-i18n="backup_change_location">Cambiar Ubicación</button>
+              <input type="file" id="backup-location-picker" style="display: none;" webkitdirectory>
+              <small id="backup-location-message"></small>
+            </div>
+          </div>
+
+          <div id="backup-status-box">
+            <small id="backup-status"></small>
+          </div>
+          <div class="backup-grid" id="backup-grid"></div>
+        </section>
+
+        <section class="view" id="view-config">
+          <div class="header">
+            <h2 data-i18n="config_title">Config JSON</h2>
+            <div class="actions">
+              <button id="config-refresh" data-i18n="common_refresh">Actualizar</button>
+              <button id="config-save" class="primary" data-i18n="common_save">Guardar</button>
+            </div>
+          </div>
+          <textarea id="config-editor"></textarea>
+          <small id="config-status"></small>
+        </section>
+
+        <section class="view" id="view-discord">
+          <div class="header">
+            <h2 data-i18n="discord_title_page">Configuración de Discord</h2>
+          </div>
+          <div class="discord-config">
+            <div class="card">
+              <h3 data-i18n="discord_status_title">Estado del Bot</h3>
+              <div class="discord-status">
+                <span class="dot" id="discord-status-dot"></span>
+                <span id="discord-status-text" data-i18n="discord_status_disconnected">Desconectado</span>
+              </div>
+            </div>
+            <div class="card">
+              <h3 data-i18n="discord_config_title">Configuración</h3>
+              <div class="form-group">
+                <label data-i18n="discord_token">Token del Bot</label>
+                <input id="discord-token" type="password" placeholder="Token del bot de Discord" data-i18n-placeholder="discord_token_placeholder" />
+              </div>
+              <div class="form-group">
+                <label data-i18n="discord_channel">ID del Canal de Anuncios</label>
+                <input id="discord-channel" type="text" placeholder="ID del canal" data-i18n-placeholder="discord_channel_placeholder" />
+              </div>
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input id="discord-enabled" type="checkbox" />
+                  <span data-i18n="discord_enable_notifications">Habilitar notificaciones</span>
+                </label>
+              </div>
+              <div class="actions">
+                <button id="discord-save" class="primary" data-i18n="discord_save">Guardar Configuración</button>
+                <button id="discord-test" data-i18n="discord_test">Enviar Prueba</button>
+              </div>
+              <small id="discord-message"></small>
+            </div>
+            <div class="card">
+              <h3 data-i18n="discord_instructions_title">Instrucciones</h3>
+              <ol class="instructions">
+                <li data-i18n="discord_instruction_1">Crea un bot en Discord Developer Portal</li>
+                <li data-i18n="discord_instruction_2">Copia el token del bot y pégalo arriba</li>
+                <li data-i18n="discord_instruction_3">Invita el bot a tu servidor con permisos de "Manage Channels" y "Send Messages"</li>
+                <li data-i18n="discord_instruction_4">Haz clic derecho en el canal donde quieres los anuncios y copia su ID</li>
+                <li data-i18n="discord_instruction_5">Pega el ID del canal arriba y activa las notificaciones</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+      </main>
+      <aside class="help-drawer" id="help-drawer">
+        <div class="help-drawer-header">
+          <h3 data-i18n="help_info_title">💡 Information</h3>
+          <button id="help-drawer-close" class="close-btn">×</button>
+        </div>
+        <div class="help-drawer-content">
+          <div class="help-section">
+            <h4 data-i18n="help_first_run_title">Primera Ejecución</h4>
+            <p data-i18n="help_first_run_intro">Si es la primera vez que ejecutas el servidor, debes autenticarlo:</p>
+            <ol>
+              <li data-i18n="help_first_run_1">Inicia el servidor</li>
+              <li data-i18n="help_first_run_2">En la consola, ejecuta: /auth login device</li>
+              <li data-i18n="help_first_run_3">Copia el código mostrado</li>
+              <li data-i18n="help_first_run_4">Visita la URL indicada en los logs</li>
+              <li data-i18n="help_first_run_5">Ingresa el código</li>
+              <li data-i18n="help_first_run_6">¡Listo! El servidor estará autenticado</li>
+            </ol>
+          </div>
+        </div>
+      </aside>
+      <button id="help-toggle" class="help-toggle">?</button>
+    </div>
+    <!-- Load i18n system first, then application logic -->
+    <script src="i18n-loader.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

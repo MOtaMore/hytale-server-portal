@@ -1,0 +1,51 @@
+appId: com.hytale.servermanager
+productName: Hytale Server Portal
+directories:
+  buildResources: assets
+  output: dist
+files:
+  - main.js
+  - preload.js
+  - server.js
+  - public/**/*
+  - node_modules/**/*
+  - package.json
+  - .env.example
+
+# Windows installer configuration
+win:
+  target:
+    - nsis
+    - portable
+  icon: assets/icon.png
+
+# NSIS installer for Windows
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Hytale Server Portal
+
+# Linux DEB package
+linux:
+  target:
+    - deb
+  category: Utility
+  maintainer: Hytale Server Portal Contributors <support@hytaleserver.com>
+  icon: assets/icon.png
+
+deb:
+  depends:
+    - libxss1
+    - libappindicator1
+    - libindicator7
+    - nodejs
+    - npm
+
+# macOS configuration
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.utilities

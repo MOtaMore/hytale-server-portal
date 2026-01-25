@@ -1,0 +1,43 @@
+# Dependencias
+node_modules/
+package-lock.json
+discord-config.json
+
+# Directorio HytaleServer - Ignorar TODO excepto scripts bash
+HytaleServer/*
+!HytaleServer/start-server.sh
+!HytaleServer/stop-server.sh
+!HytaleServer/hytale-downloader-linux-amd64
+
+# Archivos de configuración local
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Backups
+backups/
+
+# Sistema
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporal
+*.tmp
+*.swp
+*.swo
+*~
+
+# Build y Distribución
+dist/
+build/
+webportal/dist/
+webportal/build/
+out/
+
+# Electron
+release/
