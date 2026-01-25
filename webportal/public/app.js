@@ -342,6 +342,15 @@ async function refreshSetup() {
     downloaderVersion.textContent = data.version || i18n.t("common_not_available");
     gameVersion.textContent = data.gameVersion || i18n.t("common_not_available");
     
+    // Update downloader authentication status
+    downloaderAuthDot.classList.toggle("on", data.isAuthenticated);
+    downloaderAuthStatus.textContent = data.isAuthenticated 
+      ? i18n.t("setup_auth_status_success") 
+      : i18n.t("setup_auth_status_pending");
+    
+    // Disable auth button if already authenticated
+    downloaderAuthBtn.disabled = data.isAuthenticated;
+    
     // Update server installation status indicator
     serverInstalledDot.classList.toggle("on", data.isInstalled);
     serverInstalledText.textContent = data.isInstalled ? i18n.t("common_yes") : i18n.t("common_no");
@@ -1034,15 +1043,9 @@ saveServerConfigBtn.addEventListener("click", async () => {
 // Load current backup location configuration from backend
 async function loadBackupConfig() {
   try {
-    const response = await fetch("/api/backup/config", {
-      headers: { "x-token": state.token }
-    });
-    
-    if (response.ok) {
-      const config = await response.json();
-      if (backupLocation) {
-        backupLocation.value = config.backupLocation || "";
-      }
+    const config = await apiFetch("/api/backup/config");
+    if (config && backupLocation) {
+      backupLocation.value = config.backupLocation || "";
     }
   } catch (error) {
     console.error("Error loading backup config:", error);
@@ -1058,12 +1061,14 @@ backupLocationPicker?.addEventListener("change", async (e) => {
   try {
     const files = e.target.files;
     if (files.length === 0) return;
-    
-    // Extract directory path from first file in selection (user selected a folder)
-    const path = files[0].webkitRelativePath.split('/')[0];
-    
-    if (!path) {
-      // No valid directory path was extracted from the file picker
+
+    // Extraer ruta absoluta del primer archivo seleccionado (Electron expone .path)
+    const first = files[0];
+    const absoluteFilePath = (first.path || "").replace(/\\/g, "/");
+    const lastSlash = absoluteFilePath.lastIndexOf("/");
+    const directory = lastSlash > 0 ? absoluteFilePath.slice(0, lastSlash) : "";
+
+    if (!directory) {
       backupLocationMessage.textContent = i18n.t("backup_location_error");
       backupLocationMessage.className = "message error";
       return;
@@ -1072,24 +1077,15 @@ backupLocationPicker?.addEventListener("change", async (e) => {
     backupChangeLocationBtn.disabled = true;
     backupChangeLocationBtn.textContent = i18n.t("common_loading");
 
-    const response = await fetch("/api/backup/config", {
+    const data = await apiFetch("/api/backup/config", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-token": state.token
-      },
-      body: JSON.stringify({ backupLocation: path })
+      body: JSON.stringify({ backupLocation: directory })
     });
 
-    const data = await response.json();
-
-    if (response.ok) {
+    if (data) {
       backupLocation.value = data.config.backupLocation;
       backupLocationMessage.textContent = i18n.t("backup_location_updated");
       backupLocationMessage.className = "message success";
-    } else {
-      backupLocationMessage.textContent = data.error || i18n.t("backup_location_error");
-      backupLocationMessage.className = "message error";
     }
   } catch (error) {
     backupLocationMessage.textContent = error.message;

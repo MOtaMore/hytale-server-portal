@@ -14,6 +14,7 @@ let isShuttingDown = false;
 // Detectar si estamos en desarrollo
 const isDev = process.env.ELECTRON_DEV === 'true' || !app.isPackaged;
 const PORT = 3000;
+const USER_DATA_DIR = app.getPath('userData');
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -47,14 +48,23 @@ function createWindow() {
 
 function startServer() {
   return new Promise((resolve, reject) => {
-    const serverPath = path.join(__dirname, 'server.js');
+    // En producción, server.js está desempaquetado fuera del ASAR
+    let serverPath = path.join(__dirname, 'server.js');
+    let workingDir = __dirname;
+    
+    // Si estamos en ASAR, usar la ruta desempaquetada
+    if (serverPath.includes('app.asar')) {
+      serverPath = serverPath.replace('app.asar', 'app.asar.unpacked');
+      workingDir = workingDir.replace('app.asar', 'app.asar.unpacked');
+    }
     
     serverProcess = spawn('node', [serverPath], {
-      cwd: __dirname,
+      cwd: workingDir,
       env: {
         ...process.env,
         PORT: PORT,
-        ELECTRON_APP: 'true'
+        ELECTRON_APP: 'true',
+        USER_DATA_DIR
       },
       stdio: 'pipe'
     });

@@ -21,16 +21,19 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 const PORT = process.env.PORT || 3000;
-const BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
+const USER_DATA_DIR = process.env.USER_DATA_DIR || path.join(os.homedir(), ".hytale-server-portal");
+const RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
+const BASE_DIR = path.join(USER_DATA_DIR, "HytaleServer");
 const START_SCRIPT = path.join(BASE_DIR, "start-server.sh");
 const STOP_SCRIPT = path.join(BASE_DIR, "stop-server.sh");
 const SCREEN_NAME = "HytaleServer";
 const CONFIG_PATH = path.join(BASE_DIR, "config.json");
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 1000 * 60 * 60 * 8);
-const DISCORD_CONFIG_PATH = path.join(__dirname, "discord-config.json");
+const DISCORD_CONFIG_PATH = path.join(USER_DATA_DIR, "discord-config.json");
 const DOWNLOADER_PATH = path.join(BASE_DIR, "hytale-downloader-linux-amd64");
-const AUTH_CONFIG_PATH = path.join(__dirname, ".auth-secure");
+const AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, ".auth-secure");
 const DOWNLOAD_STATUS_PATH = path.join(BASE_DIR, ".download-status.json");
+const SETUP_CONFIG_PATH = path.join(USER_DATA_DIR, "setup-config.json");
 const DOWNLOADER_AUTH_SESSIONS = new Map();
 
 // ============================================
@@ -99,6 +102,36 @@ const HIDDEN_FILES = new Set([
   ".hytale-downloader-credentials.json"
 ]);
 const tokens = new Map();
+
+// Directorio de datos del usuario (escribible)
+fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+
+async function ensureBaseDir() {
+  try {
+    await fsp.mkdir(BASE_DIR, { recursive: true });
+
+    const marker = path.join(BASE_DIR, ".initialized");
+    if (fs.existsSync(marker)) {
+      return;
+    }
+
+    // Copiar recursos iniciales del directorio empaquetado si existen
+    if (fs.existsSync(RESOURCE_BASE_DIR)) {
+      await fsp.cp(RESOURCE_BASE_DIR, BASE_DIR, {
+        recursive: true,
+        force: false,
+        errorOnExist: false
+      });
+    }
+
+    await fsp.writeFile(marker, "ok", "utf-8");
+  } catch (error) {
+    console.error("[Init] Error preparando directorio base:", error.message);
+    throw error;
+  }
+}
+
+await ensureBaseDir();
 
 // Cliente de Discord
 let discordClient = null;
@@ -288,6 +321,56 @@ async function findDataDisk() {
   return null;
 }
 
+async function loadBackupConfigFile() {
+  try {
+    if (fs.existsSync(BACKUP_CONFIG_PATH)) {
+      const raw = await fsp.readFile(BACKUP_CONFIG_PATH, "utf8");
+      return JSON.parse(raw);
+    }
+  } catch (error) {
+    console.error("[Backup] Error leyendo config:", error.message);
+  }
+  return null;
+}
+
+async function resolveBackupDirectory() {
+  // Prioridad: configuración guardada -> disco DATA detectado -> carpeta interna
+  const config = await loadBackupConfigFile();
+  let candidate = config?.backupLocation;
+
+  if (!candidate) {
+    const dataDisk = await findDataDisk();
+    candidate = dataDisk || path.join(BASE_DIR, "backups");
+  }
+
+  const absolutePath = path.isAbsolute(candidate)
+    ? candidate
+    : path.resolve(candidate);
+
+  try {
+    await fsp.mkdir(absolutePath, { recursive: true });
+    await fsp.access(absolutePath, fs.constants.W_OK);
+  } catch (err) {
+    throw new Error("No tiene permisos de escritura en la carpeta seleccionada");
+  }
+
+  // Si no había config guardada, persistir la ruta utilizada
+  if (!config) {
+    const defaultConfig = {
+      backupLocation: absolutePath,
+      enabled: true,
+      updatedAt: new Date().toISOString()
+    };
+    try {
+      await fsp.writeFile(BACKUP_CONFIG_PATH, JSON.stringify(defaultConfig, null, 2));
+    } catch (err) {
+      console.error("[Backup] No se pudo persistir config por defecto:", err.message);
+    }
+  }
+
+  return { dir: absolutePath, config: config || null };
+}
+
 async function addDirToZipExcludeHidden(zip, dirPath, baseDir = "") {
   const entries = await fsp.readdir(dirPath, { withFileTypes: true });
   for (const entry of entries) {
@@ -398,11 +481,24 @@ function stripAnsi(text) {
 // ============ DESCARGADOR: AUTH DEVICE FLOW ============
 
 function parseDeviceFlowOutput(line) {
-  const codeMatch = line.match(/Authorization code:\s*(\S+)/i);
-  const urlMatch = line.match(/https?:\/\/[^\s]+/i);
+  // Parse code: "Enter code:" followed by the code on the next line
+  // or "Authorization code: ABCD-1234"
+  const codeMatch = line.match(/(?:Enter code:|Authorization code:)\s*([A-Z0-9-]+)/i) ||
+                    line.match(/^\s*([A-Z0-9]{4}-[A-Z0-9]{4})\s*$/); // Code alone on a line
+  
+  // Parse URLs - prioritize the one with user_code parameter
+  const urlWithCodeMatch = line.match(/(https:\/\/[^\s]+\?user_code=[A-Z0-9-]+)/i);
+  const urlMatch = line.match(/(https:\/\/accounts\.hytale\.com\/device)/i);
+  
+  // Check for authentication success messages
+  const isSuccess = /authentication successful|authenticated|authorization complete/i.test(line);
+  const isFailed = /authentication failed|authorization failed|expired|denied/i.test(line);
+  
   return {
     code: codeMatch ? codeMatch[1] : null,
-    url: urlMatch ? urlMatch[0] : null
+    url: urlWithCodeMatch ? urlWithCodeMatch[1] : (urlMatch ? urlMatch[1] : null),
+    isSuccess,
+    isFailed
   };
 }
 
@@ -552,7 +648,6 @@ async function initDiscordBot() {
 // Get saved language preference from config file
 async function getAppLanguage() {
   try {
-    const SETUP_CONFIG_PATH = path.join(__dirname, "setup-config.json");
     if (fs.existsSync(SETUP_CONFIG_PATH)) {
       const setupConfig = JSON.parse(fs.readFileSync(SETUP_CONFIG_PATH, "utf8"));
       return setupConfig.language || 'es';
@@ -667,8 +762,6 @@ function authMiddleware(req, res, next) {
 // ============ SETUP ROUTES ============
 // These routes do NOT require authentication (accessible on first run)
 // =============================================================================
-
-const SETUP_CONFIG_PATH = path.join(__dirname, "setup-config.json");
 
 // ============ SETUP STATUS ENDPOINT ============
 // Check if initial setup has been completed
@@ -1054,13 +1147,8 @@ app.put("/api/config", async (req, res) => {
 
 app.get("/api/backup/status", async (req, res) => {
   try {
-    const dataDisk = await findDataDisk();
-    if (!dataDisk) {
-      res.json({ available: false, path: null, error: "No se ha detectado el disco de respaldos (DATA)" });
-      return;
-    }
-    const backupDir = dataDisk;
-    res.json({ available: true, path: dataDisk, backupDir });
+    const { dir } = await resolveBackupDirectory();
+    res.json({ available: true, path: dir, backupDir: dir });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
@@ -1068,12 +1156,7 @@ app.get("/api/backup/status", async (req, res) => {
 
 app.post("/api/backup/create", async (req, res) => {
   try {
-    const dataDisk = await findDataDisk();
-    if (!dataDisk) {
-      res.status(400).json({ error: "No se ha detectado el disco de respaldos (DATA)" });
-      return;
-    }
-    const backupDir = dataDisk;
+    const { dir: backupDir } = await resolveBackupDirectory();
     await fsp.mkdir(backupDir, { recursive: true });
     const backupName = `HytaleServer-${formatDateForBackup()}`;
     const backupPath = path.join(backupDir, `${backupName}.zip`);
@@ -1103,12 +1186,7 @@ app.post("/api/backup/create", async (req, res) => {
 
 app.get("/api/backup/list", async (req, res) => {
   try {
-    const dataDisk = await findDataDisk();
-    if (!dataDisk) {
-      res.json({ available: false, backups: [] });
-      return;
-    }
-    const backupDir = dataDisk;
+    const { dir: backupDir } = await resolveBackupDirectory();
     try {
       const files = await fsp.readdir(backupDir);
       const backups = [];
@@ -1136,18 +1214,14 @@ app.get("/api/backup/list", async (req, res) => {
 
 app.delete("/api/backup/:file", async (req, res) => {
   try {
-    const dataDisk = await findDataDisk();
-    if (!dataDisk) {
-      res.status(400).json({ error: "No se ha detectado el disco de respaldos (DATA)" });
-      return;
-    }
+    const { dir: backupDir } = await resolveBackupDirectory();
     const file = req.params.file;
     if (!file.endsWith(".zip") || file.includes("..") || file.includes("/")) {
       res.status(400).json({ error: "Nombre de archivo inválido" });
       return;
     }
-    const backupPath = path.join(dataDisk, file);
-    if (!backupPath.startsWith(dataDisk + path.sep)) {
+    const backupPath = path.join(backupDir, file);
+    if (!backupPath.startsWith(backupDir + path.sep)) {
       res.status(400).json({ error: "Ruta inválida" });
       return;
     }
@@ -1160,18 +1234,14 @@ app.delete("/api/backup/:file", async (req, res) => {
 
 app.post("/api/backup/restore/:file", async (req, res) => {
   try {
-    const dataDisk = await findDataDisk();
-    if (!dataDisk) {
-      res.status(400).json({ error: "No se ha detectado el disco de respaldos (DATA)" });
-      return;
-    }
+    const { dir: backupDir } = await resolveBackupDirectory();
     const file = req.params.file;
     if (!file.endsWith(".zip") || file.includes("..") || file.includes("/")) {
       res.status(400).json({ error: "Nombre de archivo inválido" });
       return;
     }
-    const backupPath = path.join(dataDisk, file);
-    if (!backupPath.startsWith(dataDisk + path.sep)) {
+    const backupPath = path.join(backupDir, file);
+    if (!backupPath.startsWith(backupDir + path.sep)) {
       res.status(400).json({ error: "Ruta inválida" });
       return;
     }
@@ -1354,17 +1424,8 @@ const BACKUP_CONFIG_PATH = path.join(BASE_DIR, "backup-config.json");
 // Retrieve backup configuration (location and settings)
 app.get("/api/backup/config", async (req, res) => {
   try {
-    if (fs.existsSync(BACKUP_CONFIG_PATH)) {
-      const config = JSON.parse(await fsp.readFile(BACKUP_CONFIG_PATH, "utf8"));
-      res.json(config);
-    } else {
-      // Ubicación por defecto
-      const defaultLocation = path.join(BASE_DIR, "backups");
-      res.json({
-        backupLocation: defaultLocation,
-        enabled: true
-      });
-    }
+    const { dir } = await resolveBackupDirectory();
+    res.json({ backupLocation: dir, enabled: true });
   } catch (error) {
     console.error("[ERROR] Loading backup config:", error);
     res.status(500).json({ error: formatError(error) });
@@ -1454,6 +1515,22 @@ app.get("/api/downloader/status", async (req, res) => {
     const serverJarExists = fs.existsSync(path.join(BASE_DIR, "HytaleServer.jar"));
     const assetsExists = fs.existsSync(path.join(BASE_DIR, "Assets.zip"));
     const isInstalled = serverJarExists && assetsExists;
+    
+    // Verificar si el downloader está autenticado (tiene credenciales válidas)
+    const credentialsPath = path.join(BASE_DIR, ".hytale-downloader-credentials.json");
+    let isAuthenticated = false;
+    try {
+      if (fs.existsSync(credentialsPath)) {
+        const credContent = await fsp.readFile(credentialsPath, "utf-8");
+        const credentials = JSON.parse(credContent);
+        // Si el archivo existe y tiene contenido válido, está autenticado
+        isAuthenticated = !!credentials && Object.keys(credentials).length > 0;
+      }
+    } catch (e) {
+      // Si hay error leyendo, asumimos no autenticado
+      isAuthenticated = false;
+    }
+    
     if (fs.existsSync(DOWNLOAD_STATUS_PATH)) {
       try {
         const content = await fsp.readFile(DOWNLOAD_STATUS_PATH, "utf-8");
@@ -1469,6 +1546,7 @@ app.get("/api/downloader/status", async (req, res) => {
       version,
       gameVersion,
       isInstalled,
+      isAuthenticated,
       lastDownload,
       path: DOWNLOADER_PATH
     });
@@ -1527,7 +1605,9 @@ app.post("/api/downloader/auth/start", async (req, res) => {
 
     const session = createAuthSession();
 
-    const child = spawn(DOWNLOADER_PATH, ["-print-version"], { cwd: BASE_DIR });
+    // Run downloader WITHOUT arguments to trigger actual download which requires auth
+    // This will show the device flow if not authenticated
+    const child = spawn(DOWNLOADER_PATH, [], { cwd: BASE_DIR });
     session.child = child;
     session.status = "waiting";
 
@@ -1539,16 +1619,42 @@ app.post("/api/downloader/auth/start", async (req, res) => {
         const parsed = parseDeviceFlowOutput(line);
         if (parsed.code) session.code = parsed.code;
         if (parsed.url) session.verifyUrl = parsed.url;
+        
+        // Update status based on authentication messages
+        if (parsed.isSuccess && session.status !== "success") {
+          session.status = "success";
+          console.log("[Downloader Auth] Authentication successful!");
+          // Kill the child process since we only wanted to authenticate, not download
+          if (session.child) {
+            session.child.kill("SIGTERM");
+          }
+        }
+        if (parsed.isFailed && session.status !== "error") {
+          session.status = "error";
+          console.log("[Downloader Auth] Authentication failed");
+        }
       }
     });
 
     child.stderr.on("data", (chunk) => {
-      session.output.push(chunk.toString());
+      const text = chunk.toString();
+      session.output.push(text);
+      // Also parse stderr for auth messages
+      const lines = text.split(/\r?\n/);
+      for (const line of lines) {
+        const parsed = parseDeviceFlowOutput(line);
+        if (parsed.isSuccess) session.status = "success";
+        if (parsed.isFailed) session.status = "error";
+      }
     });
 
     child.on("close", (code) => {
       session.exitCode = code;
-      session.status = code === 0 ? "success" : "error";
+      // Only mark as error if not already marked as success
+      if (session.status !== "success") {
+        session.status = code === 0 ? "success" : "error";
+      }
+      console.log(`[Downloader Auth] Process exited with code ${code}, final status: ${session.status}`);
     });
 
     res.json({

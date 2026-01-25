@@ -11,6 +11,20 @@ files:
   - node_modules/**/*
   - package.json
   - .env.example
+  - assets/**/*
+
+# Unpack files that need to be accessible on the filesystem (not archived in ASAR)
+asarUnpack:
+  - server.js
+  - package.json
+  - node_modules/**/*
+  - public/**/*
+
+extraResources:
+  - from: ../HytaleServer
+    to: HytaleServer
+    filter:
+      - "**/*"
 
 # Windows installer configuration
 win:
@@ -38,10 +52,9 @@ linux:
 deb:
   depends:
     - libxss1
-    - libappindicator1
-    - libindicator7
-    - nodejs
-    - npm
+    - libgbm1
+    - libnss3
+    - libasound2
 
 # macOS configuration
 mac:
