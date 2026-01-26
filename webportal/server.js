@@ -203,10 +203,12 @@ async function ensureBaseDir() {
   try {
     console.log("[Init] Sistema detectado:", IS_WINDOWS ? "Windows" : "Linux/macOS");
     console.log("[Init] USER_DATA_DIR:", USER_DATA_DIR);
+    console.log("[Init] DOCUMENTS_DIR:", DOCUMENTS_DIR);
     console.log("[Init] RESOURCE_BASE_DIR:", RESOURCE_BASE_DIR);
     console.log("[Init] BASE_DIR:", BASE_DIR);
     
     await fsp.mkdir(BASE_DIR, { recursive: true });
+    console.log("[Init] ✓ BASE_DIR creada:", BASE_DIR);
 
     const filesToCopy = IS_WINDOWS
       ? ["hytale-downloader-windows-amd64.exe", "start-server.bat", "stop-server.bat"]
@@ -219,20 +221,25 @@ async function ensureBaseDir() {
       console.log("[Init] DOWNLOADER_PATH:", resolved.path, "(source:", resolved.source, ")");
       console.log("[Init] Downloader existe:", fs.existsSync(resolved.path) ? "✓ SÍ" : "✗ NO");
 
-      // Si el downloader no existe en BASE_DIR pero sí en RESOURCE_BASE_DIR, copiarlo
+      // Reponer archivos que falten desde RESOURCE_BASE_DIR
       const downloaderFileName = IS_WINDOWS
         ? "hytale-downloader-windows-amd64.exe"
         : "hytale-downloader-linux-amd64";
       const userPath = path.join(BASE_DIR, downloaderFileName);
       const resourcePath = path.join(RESOURCE_BASE_DIR, downloaderFileName);
-      if (!fs.existsSync(userPath) && fs.existsSync(resourcePath)) {
-        console.log("[Init] Downloader faltante en BASE_DIR, copiando desde recursos empaquetados...");
-        await fsp.mkdir(BASE_DIR, { recursive: true });
-        await fsp.copyFile(resourcePath, userPath);
-        if (!IS_WINDOWS) {
-          await fsp.chmod(userPath, 0o755);
+      if (!fs.existsSync(userPath)) {
+        if (fs.existsSync(resourcePath)) {
+          console.log("[Init] Downloader faltante en BASE_DIR, copiando desde recursos empaquetados...");
+          await fsp.mkdir(BASE_DIR, { recursive: true });
+          await fsp.copyFile(resourcePath, userPath);
+          if (!IS_WINDOWS) {
+            await fsp.chmod(userPath, 0o755);
+          }
+          console.log("[Init] ✓ Downloader copiado en:", userPath);
+        } else {
+          console.warn("[Init] ⚠ Downloader NO ENCONTRADO en recursos ni en BASE_DIR");
+          console.warn("[Init] Por favor, copia manualmente el downloader a:", userPath);
         }
-        console.log("[Init] Downloader copiado en:", userPath);
       }
 
       // Reponer scripts y downloader que falten
@@ -269,13 +276,12 @@ async function ensureBaseDir() {
           }
           console.log(`[Init] ✓ ${file} copiado`);
         } else {
-          console.warn(`[Init] ⚠ Advertencia: ${file} no encontrado en ${RESOURCE_BASE_DIR}`);
+          console.warn(`[Init] ⚠ ${file} no encontrado en ${RESOURCE_BASE_DIR}`);
         }
       }
-      
-      console.log("[Init] Recursos copiados correctamente");
     } else {
       console.warn("[Init] ADVERTENCIA: Directorio de recursos no encontrado en:", RESOURCE_BASE_DIR);
+      console.warn("[Init] Por favor, asegúrate de que los archivos del servidor estén en:", BASE_DIR);
     }
 
     await fsp.writeFile(marker, "ok", "utf-8");
@@ -2194,6 +2200,7 @@ const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
         diagnostics: {
           documentsDir: DOCUMENTS_DIR,
           baseDir: BASE_DIR,
+          resourceBaseDir: RESOURCE_BASE_DIR,
           userPath: userCandidate,
           userExists: fs.existsSync(userCandidate),
           resourcePath: resourceCandidate,
