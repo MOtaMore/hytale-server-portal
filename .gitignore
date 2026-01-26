@@ -8,6 +8,7 @@ HytaleServer/*
 !HytaleServer/start-server.sh
 !HytaleServer/stop-server.sh
 !HytaleServer/hytale-downloader-linux-amd64
+!HytaleServer/hytale-downloader-windows-amd64.exe
 
 # Archivos de configuración local
 .env

@@ -1099,9 +1099,30 @@ backupLocationPicker?.addEventListener("change", async (e) => {
 
 // ============ APPLICATION INITIALIZATION ============
 // Initialize app after i18n system is loaded and ready
+async function refreshPlatformStatus() {
+  try {
+    if (!state.token) return;
+    const data = await apiFetch("/api/platform/status");
+    if (!data) return;
+    const warnings = [];
+    if (!data.javaFound) warnings.push("Java 25 not found (required)");
+    if (!data.downloaderFound) warnings.push("Downloader not found for this platform");
+    if (warnings.length) {
+      statusExtra.textContent = warnings.join(" • ");
+      statusExtra.classList.add("warn");
+    } else {
+      statusExtra.textContent = i18n.t("status_ready") || "Ready";
+      statusExtra.classList.remove("warn");
+    }
+  } catch (error) {
+    console.error("Error loading platform status:", error);
+  }
+}
+
 async function initializeApp() {
   console.log('App initialization started');
   await checkInitialSetup();
+  await refreshPlatformStatus();
   
   // Dynamically load server config or backup config when user navigates to those views
   navButtons.forEach(btn => {
@@ -1112,6 +1133,9 @@ async function initializeApp() {
       }
       if (view === "backups" && state.token) {
         loadBackupConfig();
+      }
+      if (view === "dashboard" && state.token) {
+        refreshPlatformStatus();
       }
     });
   });

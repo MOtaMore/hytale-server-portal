@@ -21,6 +21,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+const IS_WINDOWS = process.platform === "win32";
 const USER_DATA_DIR = process.env.USER_DATA_DIR || path.join(os.homedir(), ".hytale-server-portal");
 const RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
 const BASE_DIR = path.join(USER_DATA_DIR, "HytaleServer");
@@ -30,7 +31,9 @@ const SCREEN_NAME = "HytaleServer";
 const CONFIG_PATH = path.join(BASE_DIR, "config.json");
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 1000 * 60 * 60 * 8);
 const DISCORD_CONFIG_PATH = path.join(USER_DATA_DIR, "discord-config.json");
-const DOWNLOADER_PATH = path.join(BASE_DIR, "hytale-downloader-linux-amd64");
+const DOWNLOADER_PATH = IS_WINDOWS
+  ? path.join(BASE_DIR, "hytale-downloader-windows-amd64.exe")
+  : path.join(BASE_DIR, "hytale-downloader-linux-amd64");
 const AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, ".auth-secure");
 const DOWNLOAD_STATUS_PATH = path.join(BASE_DIR, ".download-status.json");
 const SETUP_CONFIG_PATH = path.join(USER_DATA_DIR, "setup-config.json");
@@ -99,6 +102,7 @@ const DATA_DISK_PATHS = [
 const HIDDEN_EXTENSIONS = new Set([".sh"]);
 const HIDDEN_FILES = new Set([
   "hytale-downloader-linux-amd64",
+  "hytale-downloader-windows-amd64.exe",
   ".hytale-downloader-credentials.json"
 ]);
 const tokens = new Map();
@@ -132,6 +136,77 @@ async function ensureBaseDir() {
 }
 
 await ensureBaseDir();
+
+// ================= PLATFORM HELPERS =================
+
+function normalizeExe(file) {
+  if (IS_WINDOWS && !file.endsWith(".exe")) return `${file}.exe`;
+  return file;
+}
+
+async function findJavaExecutable() {
+  // Priority: JAVA_HOME/bin/java, then PATH, then common Windows locations for Java 25
+  const candidates = [];
+  if (process.env.JAVA_HOME) {
+    candidates.push(path.join(process.env.JAVA_HOME, "bin", normalizeExe("java")));
+  }
+
+  // PATH lookup
+  candidates.push("java");
+
+  if (IS_WINDOWS) {
+    const programFiles = [
+      process.env["ProgramFiles"],
+      process.env["ProgramFiles(x86)"],
+      "C:/Program Files",
+      "C:/Program Files (x86)"
+    ].filter(Boolean);
+    const javaVendors = [
+      "Java",
+      "Eclipse Adoptium",
+      "AdoptOpenJDK",
+      "Zulu",
+      "Temurin"
+    ];
+    for (const root of programFiles) {
+      for (const vendor of javaVendors) {
+        candidates.push(path.join(root, vendor, "jdk-25", "bin", "java.exe"));
+        // Include minor versions
+        for (const minor of [0, 1, 2, 3, 4, 5]) {
+          candidates.push(path.join(root, vendor, `jdk-25.${minor}`, "bin", "java.exe"));
+        }
+      }
+    }
+  } else {
+    // Linux typical locations if PATH fails
+    candidates.push("/usr/bin/java");
+    candidates.push("/usr/local/bin/java");
+  }
+
+  for (const candidate of candidates) {
+    try {
+      await fsp.access(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+// Server process management (cross-platform)
+let serverProcess = null;
+let serverProcessExited = true;
+let serverLogStream = null;
+
+async function downloaderExists() {
+  try {
+    await fsp.access(DOWNLOADER_PATH, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Cliente de Discord
 let discordClient = null;
@@ -195,6 +270,9 @@ function runScript(scriptPath) {
 }
 
 function getScreenStatus() {
+  if (IS_WINDOWS) {
+    return Promise.resolve({ running: isServerRunning(), raw: "" });
+  }
   return new Promise((resolve) => {
     exec("screen -list", (err, stdout) => {
       if (err) {
@@ -240,6 +318,143 @@ async function readStartConfig() {
   } catch {
     return { xmx: null, jarName: "HytaleServer.jar" };
   }
+}
+
+async function readServerConfig() {
+  const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
+  try {
+    if (fs.existsSync(SERVER_CONFIG_PATH)) {
+      const cfg = JSON.parse(await fsp.readFile(SERVER_CONFIG_PATH, "utf8"));
+      return {
+        threads: cfg.threads || 4,
+        ramMin: cfg.ramMin || 2048,
+        ramMax: cfg.ramMax || 4096
+      };
+    }
+  } catch (e) {
+    console.error("[ServerConfig] Error reading:", e.message);
+  }
+  return { threads: 4, ramMin: 2048, ramMax: 4096 };
+}
+
+function getServerLogStream() {
+  if (!serverLogStream) {
+    const logPath = path.join(BASE_DIR, "server.log");
+    serverLogStream = fs.createWriteStream(logPath, { flags: "a" });
+  }
+  return serverLogStream;
+}
+
+function closeServerLogStream() {
+  if (serverLogStream) {
+    try {
+      serverLogStream.end();
+    } catch {}
+    serverLogStream = null;
+  }
+}
+
+function isServerRunning() {
+  return !!(serverProcess && !serverProcessExited);
+}
+
+async function startServerProcessNode() {
+  if (isServerRunning()) {
+    throw new Error("Server already running");
+  }
+
+  const javaPath = await findJavaExecutable();
+  if (!javaPath) {
+    throw new Error("Java 25 not found. Please install Java 25 and try again.");
+  }
+
+  const { ramMin, ramMax } = await readServerConfig();
+  const { jarName } = await readStartConfig();
+  const jarPath = path.join(BASE_DIR, jarName);
+  if (!fs.existsSync(jarPath)) {
+    throw new Error(`Server jar not found at ${jarPath}`);
+  }
+
+  const args = [
+    `-Xms${ramMin}M`,
+    `-Xmx${ramMax}M`,
+    "-jar",
+    jarPath
+  ];
+
+  const child = spawn(javaPath, args, {
+    cwd: BASE_DIR,
+    env: {
+      ...process.env,
+      JAVA_TOOL_OPTIONS: undefined
+    },
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+
+  serverProcess = child;
+  serverProcessExited = false;
+
+  const logStream = getServerLogStream();
+  const forward = (data) => {
+    const text = data.toString();
+    logStream.write(text);
+    console.log(`[ServerProc] ${text}`);
+  };
+  child.stdout.on("data", forward);
+  child.stderr.on("data", forward);
+
+  child.on("exit", (code, signal) => {
+    serverProcessExited = true;
+    serverProcess = null;
+    closeServerLogStream();
+    console.log(`[ServerProc] exited code=${code} signal=${signal}`);
+  });
+
+  // Give process a moment to initialize
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    }, 2000);
+
+    child.once("error", (err) => {
+      if (resolved) return;
+      clearTimeout(timer);
+      resolved = true;
+      reject(err);
+    });
+  });
+}
+
+async function stopServerProcessNode() {
+  if (!serverProcess || serverProcessExited) return;
+
+  return new Promise((resolve) => {
+    const pid = serverProcess.pid;
+    const done = () => {
+      serverProcessExited = true;
+      serverProcess = null;
+      closeServerLogStream();
+      resolve();
+    };
+
+    if (IS_WINDOWS) {
+      const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"]);
+      killer.on("exit", done);
+      killer.on("error", done);
+    } else {
+      serverProcess.once("exit", done);
+      serverProcess.kill("SIGTERM");
+      setTimeout(() => {
+        if (!serverProcessExited) {
+          serverProcess.kill("SIGKILL");
+        }
+      }, 5000);
+    }
+  });
 }
 
 // Cache for storing the last CPU reading to calculate CPU percentage
@@ -405,6 +620,15 @@ function parseSizeToBytes(value, unit) {
 }
 
 async function getServerProcessUsage(jarName) {
+  if (isServerRunning() && serverProcess?.pid) {
+    try {
+      const stats = await pidusage(serverProcess.pid);
+      return { pid: serverProcess.pid, ...stats };
+    } catch (e) {
+      console.error("[Metrics] pidusage failed for tracked pid:", e.message);
+    }
+  }
+
   const pattern = jarName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
   // Attempt 1: Find Java process specifically (exclude screen and bash wrappers)
@@ -886,8 +1110,13 @@ app.get("/api/status", async (req, res) => {
 
 app.post("/api/start", async (req, res) => {
   try {
-    const output = await runScript(START_SCRIPT);
-    res.json({ output });
+    if (IS_WINDOWS) {
+      await startServerProcessNode();
+      res.json({ output: "Server started (Windows)" });
+    } else {
+      const output = await runScript(START_SCRIPT);
+      res.json({ output });
+    }
     sendDiscordNotification(true).catch(err => 
       console.error("[Discord] Error al enviar notificación de inicio:", err.message)
     );
@@ -898,8 +1127,13 @@ app.post("/api/start", async (req, res) => {
 
 app.post("/api/stop", async (req, res) => {
   try {
-    const output = await runScript(STOP_SCRIPT);
-    res.json({ output });
+    if (IS_WINDOWS) {
+      await stopServerProcessNode();
+      res.json({ output: "Server stopped (Windows)" });
+    } else {
+      const output = await runScript(STOP_SCRIPT);
+      res.json({ output });
+    }
     sendDiscordNotification(false).catch(err => 
       console.error("[Discord] Error al enviar notificación de detención:", err.message)
     );
@@ -938,19 +1172,27 @@ app.post("/api/command", async (req, res) => {
       return;
     }
 
-    await new Promise((resolve, reject) => {
-      execFile(
-        "screen",
-        ["-S", SCREEN_NAME, "-X", "stuff", `${command}\n`],
-        (err, stdout, stderr) => {
-          if (err) {
-            reject(new Error(stderr || stdout || err.message));
-            return;
+    if (IS_WINDOWS) {
+      if (!serverProcess || serverProcessExited || !serverProcess.stdin) {
+        res.status(400).json({ error: "No se puede enviar comando: proceso no disponible" });
+        return;
+      }
+      serverProcess.stdin.write(`${command}\n`);
+    } else {
+      await new Promise((resolve, reject) => {
+        execFile(
+          "screen",
+          ["-S", SCREEN_NAME, "-X", "stuff", `${command}\n`],
+          (err, stdout, stderr) => {
+            if (err) {
+              reject(new Error(stderr || stdout || err.message));
+              return;
+            }
+            resolve();
           }
-          resolve();
-        }
-      );
-    });
+        );
+      });
+    }
 
     res.json({ ok: true, command });
   } catch (error) {
@@ -1160,24 +1402,9 @@ app.post("/api/backup/create", async (req, res) => {
     await fsp.mkdir(backupDir, { recursive: true });
     const backupName = `HytaleServer-${formatDateForBackup()}`;
     const backupPath = path.join(backupDir, `${backupName}.zip`);
-    const parentDir = path.dirname(BASE_DIR);
-    const folderName = path.basename(BASE_DIR);
-
-    // Use system zip utility to avoid 2GB buffer size limitations in Node.js
-    await new Promise((resolve, reject) => {
-      execFile(
-        "zip",
-        ["-rq", backupPath, folderName, "-x", "*.sh", "hytale-downloader-linux-amd64", ".hytale-downloader-credentials.json"],
-        { cwd: parentDir },
-        (err, stdout, stderr) => {
-          if (err) {
-            reject(new Error(stderr || stdout || err.message));
-            return;
-          }
-          resolve();
-        }
-      );
-    });
+      const zip = new AdmZip();
+      await addDirToZipExcludeHidden(zip, BASE_DIR);
+      zip.writeZip(backupPath);
     res.json({ ok: true, backup: backupName, path: backupPath });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -1234,64 +1461,59 @@ app.delete("/api/backup/:file", async (req, res) => {
 
 app.post("/api/backup/restore/:file", async (req, res) => {
   try {
-    const { dir: backupDir } = await resolveBackupDirectory();
-    const file = req.params.file;
-    if (!file.endsWith(".zip") || file.includes("..") || file.includes("/")) {
-      res.status(400).json({ error: "Nombre de archivo inválido" });
-      return;
-    }
-    const backupPath = path.join(backupDir, file);
-    if (!backupPath.startsWith(backupDir + path.sep)) {
-      res.status(400).json({ error: "Ruta inválida" });
-      return;
-    }
-    const parentDir = path.dirname(BASE_DIR);
-    const serverFolderName = path.basename(BASE_DIR);
+      const { dir: backupDir } = await resolveBackupDirectory();
+      const file = req.params.file;
+      if (!file.endsWith(".zip") || file.includes("..") || file.includes("/")) {
+        res.status(400).json({ error: "Nombre de archivo inválido" });
+        return;
+      }
+      const backupPath = path.join(backupDir, file);
+      if (!backupPath.startsWith(backupDir + path.sep)) {
+        res.status(400).json({ error: "Ruta inválida" });
+        return;
+      }
+      if (!fs.existsSync(backupPath)) {
+        res.status(404).json({ error: "Backup no encontrado" });
+        return;
+      }
 
-    // Temporarily save protected files for restoration after backup
-    const tempKeepDir = path.join(parentDir, ".temp_keep_backup");
-    await fsp.mkdir(tempKeepDir, { recursive: true });
-    const keepNames = [
-      "hytale-downloader-linux-amd64",
-      ".hytale-downloader-credentials.json"
-    ];
+      // Guardar binarios/protegidos antes de limpiar
+      const tempKeepDir = path.join(BASE_DIR, ".temp_keep_backup");
+      await fsp.mkdir(tempKeepDir, { recursive: true });
+      const keepNames = [
+        "hytale-downloader-linux-amd64",
+        "hytale-downloader-windows-amd64.exe",
+        ".hytale-downloader-credentials.json"
+      ];
 
-    const keepFiles = (await fsp.readdir(BASE_DIR))
-      .filter(f => f.endsWith('.sh') || keepNames.includes(f))
-      .map(f => path.join(BASE_DIR, f));
+      const keepFiles = (await fsp.readdir(BASE_DIR))
+        .filter(f => f.endsWith('.sh') || keepNames.includes(f))
+        .map(f => path.join(BASE_DIR, f));
 
-    for (const keepFile of keepFiles) {
-      const fileName = path.basename(keepFile);
-      await fsp.copyFile(keepFile, path.join(tempKeepDir, fileName));
-    }
+      for (const keepFile of keepFiles) {
+        const fileName = path.basename(keepFile);
+        await fsp.copyFile(keepFile, path.join(tempKeepDir, fileName)).catch(() => {});
+      }
 
-    // Create backup of current server before restoration process
-    const oldBackupPath = BASE_DIR + ".backup_temp";
-    
-    // Restoration: delete current content (except scripts), extract zip, restore scripts
-    await new Promise((resolve, reject) => {
-      exec(
-        `cd "${parentDir}" && ` +
-        `cp -r "${serverFolderName}" "${oldBackupPath}" && ` +
-        `rm -rf "${serverFolderName}" && ` +
-        `mkdir -p "${serverFolderName}" && ` +
-        `unzip -qo "${backupPath}" -d "${parentDir}" && ` +
-        `cp "${tempKeepDir}"/* "${serverFolderName}/" 2>/dev/null || true && ` +
-        `rm -rf "${oldBackupPath}" "${tempKeepDir}"`,
-        (err, stdout, stderr) => {
-          if (err) {
-            // Si falla, intentar restaurar el backup temporal
-            exec(`cd "${parentDir}" && rm -rf "${serverFolderName}" && mv "${oldBackupPath}" "${serverFolderName}" && rm -rf "${tempKeepDir}"`, () => {
-              reject(new Error(stderr || stdout || err.message));
-            });
-            return;
-          }
-          resolve();
-        }
-      );
-    });
+      // Limpiar directorio actual
+      await fsp.rm(BASE_DIR, { recursive: true, force: true });
+      await fsp.mkdir(BASE_DIR, { recursive: true });
 
-    res.json({ ok: true, restoredFrom: backupPath });
+      // Extraer backup
+      const zip = new AdmZip(backupPath);
+      zip.extractAllTo(BASE_DIR, true);
+
+      // Restaurar archivos protegidos
+      const restoredKeeps = await fsp.readdir(tempKeepDir).catch(() => []);
+      for (const fileName of restoredKeeps) {
+        const from = path.join(tempKeepDir, fileName);
+        const to = path.join(BASE_DIR, fileName);
+        await fsp.copyFile(from, to).catch(() => {});
+      }
+
+      await fsp.rm(tempKeepDir, { recursive: true, force: true }).catch(() => {});
+
+      res.json({ ok: true, restoredFrom: backupPath });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
@@ -1364,6 +1586,21 @@ const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
 
 // ============ SERVER CONFIGURATION ENDPOINTS ============
 // Retrieve server configuration (CPU threads and RAM settings)
+  app.get("/api/platform/status", async (req, res) => {
+    try {
+      const javaPath = await findJavaExecutable();
+      const downloader = await downloaderExists();
+      res.json({
+        platform: IS_WINDOWS ? "windows" : "linux",
+        javaFound: !!javaPath,
+        javaPath: javaPath || null,
+        downloaderFound: downloader,
+        downloaderPath: downloader ? DOWNLOADER_PATH : null
+      });
+    } catch (error) {
+      res.status(500).json({ error: formatError(error) });
+    }
+  });
 app.get("/api/server/config", async (req, res) => {
   try {
     if (fs.existsSync(SERVER_CONFIG_PATH)) {
