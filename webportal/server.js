@@ -22,7 +22,11 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 const IS_WINDOWS = process.platform === "win32";
+// Directorio para datos de la aplicación (config, credenciales)
 const USER_DATA_DIR = process.env.USER_DATA_DIR || path.join(os.homedir(), IS_WINDOWS ? "AppData/Roaming/Hytale Server Portal" : ".config/Hytale Server Portal");
+
+// Directorio base donde se almacenará y ejecutará el servidor Hytale y los downloaders
+const DOCUMENTS_DIR = path.join(os.homedir(), IS_WINDOWS ? "Documents" : "Documents");
 
 // Resolver RESOURCE_BASE_DIR correctamente en diferentes contextos
 let RESOURCE_BASE_DIR = null;
@@ -45,7 +49,8 @@ else {
   RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
 }
 
-const BASE_DIR = path.join(USER_DATA_DIR, "HytaleServer");
+// Carpeta principal del servidor en Documents/Documentos
+const BASE_DIR = path.join(DOCUMENTS_DIR, "HytaleServer");
 const START_SCRIPT = path.join(BASE_DIR, IS_WINDOWS ? "start-server.bat" : "start-server.sh");
 const STOP_SCRIPT = path.join(BASE_DIR, IS_WINDOWS ? "stop-server.bat" : "stop-server.sh");
 const SCREEN_NAME = "HytaleServer";
@@ -155,6 +160,7 @@ const HIDDEN_FILES = new Set([
 ]);
 // Directorio de datos del usuario (escribible)
 fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 
 async function ensureBaseDir() {
   try {
@@ -302,6 +308,9 @@ let serverLogStream = null;
 async function downloaderExists() {
   try {
     const { path: downloaderPath } = resolveDownloaderPath();
+    if (IS_WINDOWS) {
+      return fs.existsSync(downloaderPath);
+    }
     await fsp.access(downloaderPath, fs.constants.X_OK);
     return true;
   } catch {
@@ -1313,7 +1322,7 @@ class DownloaderService {
 
     if (exists) {
       const stats = await fsp.stat(downloaderPath);
-      isExecutable = !!(stats.mode & fs.constants.X_OK);
+      isExecutable = IS_WINDOWS ? true : !!(stats.mode & fs.constants.X_OK);
 
       if (isExecutable) {
         try {
@@ -2122,13 +2131,23 @@ const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
   app.get("/api/platform/status", async (req, res) => {
     try {
       const javaPath = await findJavaExecutable();
+      const resolved = resolveDownloaderPath();
       const downloader = await downloaderExists();
+      const userCandidate = path.join(BASE_DIR, IS_WINDOWS ? "hytale-downloader-windows-amd64.exe" : "hytale-downloader-linux-amd64");
+      const resourceCandidate = path.join(RESOURCE_BASE_DIR, IS_WINDOWS ? "hytale-downloader-windows-amd64.exe" : "hytale-downloader-linux-amd64");
       res.json({
         platform: IS_WINDOWS ? "windows" : "linux",
         javaFound: !!javaPath,
         javaPath: javaPath || null,
         downloaderFound: downloader,
-        downloaderPath: downloader ? DOWNLOADER_PATH : null
+        downloaderPath: downloader ? resolved.path : null,
+        downloaderSource: resolved.source,
+        diagnostics: {
+          userPath: userCandidate,
+          userExists: fs.existsSync(userCandidate),
+          resourcePath: resourceCandidate,
+          resourceExists: fs.existsSync(resourceCandidate)
+        }
       });
     } catch (error) {
       res.status(500).json({ error: formatError(error) });
