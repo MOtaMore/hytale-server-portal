@@ -17,7 +17,6 @@
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
-    "build:mac": "electron-builder --mac",
     "pack": "electron-builder --dir",
     "dist": "electron-builder"
   },

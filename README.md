@@ -3,7 +3,7 @@
 **A professional desktop application for managing and controlling Hytale game servers with an intuitive graphical interface.**
 
 ![License](https://img.shields.io/badge/license-Private-red)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20(WSL)%20%7C%20macOS-blue)
 ![Version](https://img.shields.io/badge/version-1.0.0-green)
 
 ## 📋 Table of Contents
@@ -43,7 +43,7 @@
 - ✅ **Multi-Language Support**: Full internationalization (i18n) for 5 languages (English, Spanish, Portuguese, French, Chinese)
 - ✅ **Secure Authentication**: Protected endpoints with encrypted credential storage
 - ✅ **Real-Time Monitoring**: Live CPU, RAM, and disk space monitoring
-- ✅ **Cross-Platform**: Works on Windows, Linux, and macOS
+- ✅ **Cross-Platform**: Works on Linux, macOS, and Windows (via WSL2)
 - ✅ **Professional UI**: Modern, responsive interface with dark theme
 
 ---
@@ -102,10 +102,12 @@
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| **OS** | Windows 7+, Ubuntu 18.04+, macOS 10.15+ | Windows 10+, Ubuntu 20.04+, macOS 11+ |
+| **OS** | Windows 10 (Build 19041+) with WSL2, Ubuntu 18.04+, macOS 10.13+ | Windows 11 with WSL2, Ubuntu 22.04+, macOS 12+ |
 | **RAM** | 2 GB | 4 GB |
 | **Disk** | 500 MB | 2 GB |
-| **Java** | Java 25+ |
+| **Java** | Java 17+ | Java 21+ |
+
+**Note**: For Windows users, native Windows support is in development. Current recommended method is using WSL2 (Windows Subsystem for Linux). See [Running on Windows via WSL](#option-3-running-on-windows-via-wsl-windows-subsystem-for-linux) for detailed instructions.
 
 ### Software Requirements
 
@@ -154,7 +156,208 @@ hytale-server-portal
 2. Open it and drag Hytale Server Portal to Applications
 3. Launch from Applications folder
 
-### Option 2: Build from Source
+### Option 3: Running on Windows via WSL (Windows Subsystem for Linux)
+
+If you're on Windows 10 or Windows 11, you can run the Linux version of Hytale Server Portal using WSL2 (Windows Subsystem for Linux). This method allows you to run the native Linux application without modifications.
+
+#### Prerequisites
+
+**WSL2 Requirements:**
+- Windows 10 version 2004+ (Build 19041+) or Windows 11
+- WSL2 installed and enabled
+- WSLg (GUI support) enabled
+  - **Windows 11**: Enabled by default
+  - **Windows 10**: Requires Build 19044+ and manual configuration
+
+#### Step-by-Step Installation
+
+**1. Install WSL2 and Ubuntu**
+
+Open PowerShell or Windows Terminal as Administrator and run:
+
+```powershell
+# Install WSL2 with Ubuntu (default distribution)
+wsl --install
+
+# Or if WSL is already installed, just install Ubuntu
+wsl --install -d Ubuntu
+```
+
+Restart your computer when prompted.
+
+**2. Set Up Ubuntu**
+
+Launch Ubuntu from the Start Menu and complete the initial setup:
+- Create a Linux username
+- Set a Linux password
+- Wait for installation to complete
+
+**3. Update System Packages**
+
+Inside the Ubuntu terminal:
+
+```bash
+sudo apt update
+sudo apt upgrade -y
+```
+
+**4. Install Required Dependencies**
+
+```bash
+# Install required system packages
+sudo apt install -y libgtk-3-0 libnotify4 libnss3 libxss1 \
+  libxtst6 xdg-utils libatspi2.0-0 libdrm2 libgbm1 libasound2
+
+# Install GUI support packages (if not already present)
+sudo apt install -y x11-apps mesa-utils
+```
+
+**5. Install Hytale Server Portal**
+
+Download the Linux `.deb` package to your Windows Downloads folder, then access it from WSL:
+
+```bash
+# Navigate to Windows Downloads folder
+cd /mnt/c/Users/YourUsername/Downloads
+
+# Install the .deb package
+sudo dpkg -i hytale-server-portal_1.0.0_amd64.deb
+
+# Fix any dependency issues (if needed)
+sudo apt --fix-broken install -y
+```
+
+**6. Launch the Application**
+
+```bash
+# Launch from terminal
+hytale-server-portal --no-sandbox
+
+# Or with additional verbose logging
+hytale-server-portal --no-sandbox --verbose
+```
+
+The application window will open directly in Windows thanks to WSLg.
+
+#### WSL Configuration Tips
+
+**Enable WSLg (GUI Support) on Windows 10**
+
+If you're on Windows 10 Build 19044+, ensure WSLg is enabled:
+
+```bash
+# Check WSL version
+wsl --version
+
+# Update WSL to latest version
+wsl --update
+
+# Verify GUI support
+echo $DISPLAY  # Should output something like :0
+```
+
+**Performance Optimization**
+
+Create or edit `~/.wslconfig` in your Windows user directory (`C:\Users\YourUsername\.wslconfig`):
+
+```ini
+[wsl2]
+memory=4GB
+processors=4
+swap=2GB
+```
+
+Restart WSL after changes:
+```powershell
+wsl --shutdown
+wsl
+```
+
+**Access Windows Files from WSL**
+
+Windows drives are mounted under `/mnt/`:
+- C: drive → `/mnt/c/`
+- D: drive → `/mnt/d/`
+
+Example: Configure backup location to Windows folder:
+```bash
+/mnt/c/Users/YourUsername/Documents/HytaleBackups
+```
+
+#### Troubleshooting WSL Installation
+
+**Issue: GUI doesn't appear**
+```bash
+# Verify WSLg is running
+ps aux | grep -i wsl
+
+# Restart WSLg
+wsl --shutdown
+wsl
+```
+
+**Issue: "Cannot open display"**
+```bash
+# Set DISPLAY variable manually
+export DISPLAY=:0
+
+# Or add to ~/.bashrc for persistence
+echo "export DISPLAY=:0" >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Issue: Permission denied on Windows files**
+```bash
+# WSL has read/write access to /mnt/c/ by default
+# If issues persist, run with sudo:
+sudo hytale-server-portal --no-sandbox
+```
+
+**Issue: Application crashes on startup**
+```bash
+# Install missing libraries
+sudo apt install -y libglib2.0-0 libdbus-1-3
+
+# Run with verbose logging
+hytale-server-portal --no-sandbox --verbose 2>&1 | tee ~/app-log.txt
+```
+
+#### Advantages of WSL Method
+
+✅ **Native Linux Experience**: Full compatibility with Linux-only features  
+✅ **No Code Modifications**: Use official Linux `.deb` package as-is  
+✅ **Better Performance**: Native Linux commands and shell scripts work seamlessly  
+✅ **Easy Updates**: Standard package management with `apt`  
+✅ **Development Friendly**: Access to both Windows and Linux environments  
+
+#### Limitations
+
+⚠️ **Not a Native Windows App**: Requires WSL2 to be running  
+⚠️ **Initial Setup**: More complex than native Windows installer  
+⚠️ **WSLg Required**: GUI support only on recent Windows builds  
+⚠️ **File Path Differences**: Linux paths vs Windows paths (`/mnt/c/` prefix)  
+
+#### Creating a Desktop Shortcut (Optional)
+
+Create a Windows shortcut to launch directly from Desktop:
+
+1. Right-click Desktop → New → Shortcut
+2. Enter location: `wsl.exe -d Ubuntu -e bash -c "hytale-server-portal --no-sandbox"`
+3. Name it "Hytale Server Portal (WSL)"
+4. Click Finish
+
+Or create a `.bat` file:
+
+```batch
+@echo off
+wsl -d Ubuntu -e bash -c "hytale-server-portal --no-sandbox"
+```
+
+Save as `HytaleServerPortal.bat` and double-click to launch.
+
+---
+
+### Option 4: Build from Source
 
 See [Building Installers](#building-installers) section below.
 
@@ -343,7 +546,7 @@ hytale-server-portal/
 #### 1. Clone Repository
 
 ```bash
-git clone https://github.com/yourusername/hytale-server-portal.git
+git clone https://github.com/motamore/hytale-server-portal.git
 cd hytale-server-portal/webportal
 ```
 
