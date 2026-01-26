@@ -7,6 +7,8 @@ discord-config.json
 HytaleServer/*
 !HytaleServer/start-server.sh
 !HytaleServer/stop-server.sh
+!HytaleServer/start-server.bat
+!HytaleServer/stop-server.bat
 !HytaleServer/hytale-downloader-linux-amd64
 !HytaleServer/hytale-downloader-windows-amd64.exe
 
