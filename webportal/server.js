@@ -66,24 +66,20 @@ function getDocumentsDir() {
 const DOCUMENTS_DIR = getDocumentsDir();
 
 // Resolver RESOURCE_BASE_DIR correctamente en diferentes contextos
+// HytaleServer está ahora dentro de webportal/resources/HytaleServer
 let RESOURCE_BASE_DIR = null;
 
 // Contexto 1: En desarrollo (desde webportal/server.js)
 if (__dirname.includes("webportal")) {
-  RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
+  RESOURCE_BASE_DIR = path.resolve(__dirname, "resources", "HytaleServer");
 }
-// Contexto 2: En producción con ASAR
+// Contexto 2: En producción desempaquetado (app.asar.unpacked)
 else if (__dirname.includes("app.asar.unpacked")) {
-  RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "..", "HytaleServer");
-}
-// Contexto 3: En producción con ASAR (alternativa)
-else if (__dirname.includes("resources")) {
-  const appPath = path.dirname(path.dirname(__dirname));
-  RESOURCE_BASE_DIR = path.join(appPath, "HytaleServer");
+  RESOURCE_BASE_DIR = path.resolve(__dirname, "resources", "HytaleServer");
 }
 // Fallback
 else {
-  RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
+  RESOURCE_BASE_DIR = path.resolve(__dirname, "resources", "HytaleServer");
 }
 
 // Carpeta principal del servidor en Documents/Documentos

@@ -17,7 +17,7 @@
     ],
     "extraResources": [
       {
-        "from": "../HytaleServer",
+        "from": "resources/HytaleServer",
         "to": "HytaleServer",
         "filter": ["**/*"]
       }
