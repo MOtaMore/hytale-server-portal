@@ -3,8 +3,9 @@
 **A professional desktop application for managing and controlling Hytale game servers with an intuitive graphical interface.**
 
 ![License](https://img.shields.io/badge/license-Private-red)
-![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20(WSL)%20%7C%20macOS-blue)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux%20%7C%20macOS-blue)
 ![Version](https://img.shields.io/badge/version-1.0.0-green)
+![Java](https://img.shields.io/badge/Java-25%2B-orange)
 
 ## 📋 Table of Contents
 
@@ -40,11 +41,12 @@
 ### Why Hytale Server Portal?
 
 - ✅ **All-in-One Solution**: Manage every aspect of your server from a single interface
+- ✅ **Native Cross-Platform**: Windows 10/11 and Linux support without WSL or external scripts
+- ✅ **Java 25 Ready**: Automatic detection across multiple Java vendors and installation paths
 - ✅ **Multi-Language Support**: Full internationalization (i18n) for 5 languages (English, Spanish, Portuguese, French, Chinese)
-- ✅ **Secure Authentication**: Protected endpoints with encrypted credential storage
-- ✅ **Real-Time Monitoring**: Live CPU, RAM, and disk space monitoring
-- ✅ **Cross-Platform**: Works on Linux, macOS, and Windows (via WSL2)
-- ✅ **Professional UI**: Modern, responsive interface with dark theme
+- ✅ **Secure Authentication**: Protected endpoints with AES-256-GCM encrypted credential storage
+- ✅ **Real-Time Monitoring**: Live CPU, RAM, and disk space monitoring with cross-platform process tracking
+- ✅ **Professional UI**: Modern, responsive interface with dark theme and platform status alerts
 
 ---
 
@@ -59,7 +61,8 @@
 ### ⚙️ Server Configuration
 - **CPU Allocation**: Configure thread count for optimal performance
 - **RAM Settings**: Set minimum and maximum RAM allocation
-- **Java Process Monitoring**: Automatic detection and monitoring of Java server processes
+- **Java 25 Auto-Detection**: Automatically finds Java installations on Windows/Linux
+- **Cross-Platform Process Control**: Native process management without external scripts
 - **Environment Variables**: Manage server environment configuration
 
 ### 📁 File Management
@@ -72,8 +75,8 @@
 - **Automatic Backups**: Scheduled backup creation
 - **Restore Points**: Manage multiple backup versions
 - **Selective Restore**: Restore from specific backup snapshots
-- **Compression**: Efficient backup storage with compression
-- **Custom Backup Location**: Configure backup storage paths
+- **Cross-Platform Compression**: AdmZip-based backups (no external zip dependencies)
+- **Custom Backup Location**: Configure backup storage paths with write permission validation
 
 ### 🤖 Discord Integration
 - **Server Status Notifications**: Automatic Discord channel updates
@@ -102,12 +105,12 @@
 
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
-| **OS** | Windows 10 (Build 19041+) with WSL2, Ubuntu 18.04+, macOS 10.13+ | Windows 11 with WSL2, Ubuntu 22.04+, macOS 12+ |
+| **OS** | Windows 10 (Build 19041+), Ubuntu 18.04+, macOS 10.13+ | Windows 11, Ubuntu 22.04+, macOS 12+ |
 | **RAM** | 2 GB | 4 GB |
 | **Disk** | 500 MB | 2 GB |
-| **Java** | Java 17+ | Java 21+ |
+| **Java** | Java 25+ | Java 25+ |
 
-**Note**: For Windows users, native Windows support is in development. Current recommended method is using WSL2 (Windows Subsystem for Linux). See [Running on Windows via WSL](#option-3-running-on-windows-via-wsl-windows-subsystem-for-linux) for detailed instructions.
+**Important**: Java 25 is **required** for running the Hytale server. The application will detect Java automatically on startup and show a warning if it's not found.
 
 ### Software Requirements
 
@@ -134,11 +137,29 @@ Visit the [Releases Page](https://github.com/yourusername/hytale-server-portal/r
 - **macOS**: `Hytale-Server-Portal-1.0.0.dmg` (DMG Installer)
 
 #### Windows Installation
+
+**Prerequisites:**
+- Java 25 installed ([Download Java 25](https://www.oracle.com/java/technologies/downloads/))
+- Windows 10 (Build 19041+) or Windows 11
+
+**Steps:**
 1. Download the `.exe` installer
 2. Run the installer
 3. Follow the installation wizard
 4. Click "Finish" when complete
 5. Launch from Start Menu or Desktop shortcut
+
+**First Launch:**
+- The application will automatically detect Java 25
+- If Java is not found, you'll see a warning in the dashboard
+- Ensure Java 25 is in your system PATH or installed in standard locations
+
+**Supported Java Locations (auto-detected):**
+- `%JAVA_HOME%/bin/java.exe`
+- System PATH
+- `C:/Program Files/Java/jdk-25/bin/java.exe`
+- `C:/Program Files/Eclipse Adoptium/jdk-25/bin/java.exe`
+- Other standard Java installation directories
 
 #### Linux Installation
 1. Download the `.AppImage` file
@@ -156,9 +177,11 @@ hytale-server-portal
 2. Open it and drag Hytale Server Portal to Applications
 3. Launch from Applications folder
 
-### Option 3: Running on Windows via WSL (Windows Subsystem for Linux)
+### Option 3: Running on Windows via WSL (Alternative Method)
 
-If you're on Windows 10 or Windows 11, you can run the Linux version of Hytale Server Portal using WSL2 (Windows Subsystem for Linux). This method allows you to run the native Linux application without modifications.
+**Note**: Native Windows support is now available! WSL is no longer required but remains a valid alternative installation method.
+
+If you prefer to run the Linux version of Hytale Server Portal using WSL2 (Windows Subsystem for Linux), this method allows you to run the native Linux application.
 
 #### Prerequisites
 
@@ -367,13 +390,19 @@ See [Building Installers](#building-installers) section below.
 
 ### First Launch Setup
 
-1. **Language Selection**: Choose your preferred language from the available options
-2. **Administrator Account**: Create your admin credentials
+1. **Platform Detection**: The application automatically detects your OS and checks for:
+   - Java 25 installation
+   - Hytale server downloader binary
+   - System requirements
+2. **Language Selection**: Choose your preferred language from the available options
+3. **Administrator Account**: Create your admin credentials
    - Username: Enter admin username (minimum 3 characters)
    - Password: Set a strong password (minimum 4 characters)
    - Confirm: Verify your password
-3. **Complete Setup**: Click "Finish Installation"
-4. **Login**: Use your credentials to access the dashboard
+4. **Complete Setup**: Click "Finish Installation"
+5. **Login**: Use your credentials to access the dashboard
+
+**Note**: If Java 25 is not detected, you'll see a warning message in the dashboard. Install Java 25 before attempting to start the server.
 
 ### Basic Server Operations
 
@@ -522,24 +551,27 @@ hytale-server-portal/
 │   │   ├── icon.png              # Linux icon
 │   │   └── icon.icns             # macOS icon
 │   └── dist/                      # Build output directory
-└── HytaleServer/                  # Server launcher scripts
-    ├── start-server.sh
-    └── stop-server.sh
+└── HytaleServer/                  # Server binaries and scripts
+    ├── hytale-downloader-linux-amd64    # Linux downloader binary
+    ├── hytale-downloader-windows-amd64.exe  # Windows downloader binary
+    ├── start-server.sh              # Linux server startup script
+    └── stop-server.sh               # Linux server stop script
 ```
 
 ### Technology Stack
 
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| **Desktop Framework** | Electron | 31.0.0 |
-| **Backend** | Express.js | 4.19.2 |
-| **Runtime** | Node.js | 16+ |
-| **Authentication** | JWT + Encryption | AES-256-GCM |
-| **Database** | JSON Files | Native |
-| **Build Tool** | electron-builder | 25.0.0 |
-| **Compression** | adm-zip | 0.5.12 |
-| **Discord** | discord.js | 14.25.1 |
-| **Monitoring** | pidusage | 3.0.2 |
+| Layer | Technology | Version | Notes |
+|-------|-----------|---------|-------|
+| **Desktop Framework** | Electron | 31.0.0 | Cross-platform desktop apps |
+| **Backend** | Express.js | 4.19.2 | REST API server |
+| **Runtime** | Node.js | 16+ | JavaScript runtime |
+| **Process Management** | child_process (Node.js) | Native | Direct Java process control (Windows/Linux) |
+| **Authentication** | JWT + Encryption | AES-256-GCM | Secure credential storage |
+| **Database** | JSON Files | Native | Configuration persistence |
+| **Build Tool** | electron-builder | 25.0.0 | Multi-platform builds |
+| **Compression** | adm-zip | 0.5.12 | Cross-platform backup/restore |
+| **Discord** | discord.js | 14.25.1 | Bot integration |
+| **Monitoring** | pidusage | 3.0.2 | Cross-platform process metrics |
 
 ### Setup for Development
 
@@ -784,6 +816,56 @@ xcode-select --install
 
 ## ⚙️ Configuration
 
+### Configuration Files Location
+
+The application stores all configuration and data files in platform-specific directories:
+
+#### Windows
+```
+%APPDATA%\Hytale Server Portal\
+├── config.json                  # Application configuration
+├── users.json                   # Admin credentials
+├── .initialized                 # Setup completion marker
+├── HytaleServer/                # Server directory
+│   ├── HytaleServer.jar
+│   ├── server.log
+│   ├── server-config.json       # RAM/threads configuration
+│   ├── hytale-downloader-windows-amd64.exe
+│   └── credentials.json         # Downloader authentication
+└── backups/                     # Default backup location
+    └── *.zip
+```
+
+**Example Full Path**: `C:\Users\YourUsername\AppData\Roaming\Hytale Server Portal\config.json`
+
+#### Linux
+```
+~/.config/Hytale Server Portal/
+├── config.json                  # Application configuration
+├── users.json                   # Admin credentials
+├── .initialized                 # Setup completion marker
+├── HytaleServer/                # Server directory
+│   ├── HytaleServer.jar
+│   ├── start-server.sh
+│   ├── stop-server.sh
+│   ├── server-config.json       # RAM/threads configuration
+│   ├── hytale-downloader-linux-amd64
+│   └── credentials.json         # Downloader authentication
+└── backups/                     # Default backup location
+    └── *.zip
+```
+
+**Example Full Path**: `/home/yourusername/.config/Hytale Server Portal/config.json`
+
+#### macOS
+```
+~/Library/Application Support/Hytale Server Portal/
+├── config.json
+├── users.json
+├── HytaleServer/
+└── backups/
+```
+
 ### Configuration Files
 
 #### `setup-config.json`
@@ -818,8 +900,134 @@ Language-specific UI strings for all 5 supported languages.
 ---
 
 ## 🐛 Troubleshooting
+### Platform-Specific Issues
 
-### General Issues
+#### Windows: "Java 25 not found (required)"
+
+**Problem**: The application cannot detect Java 25 on your system.
+
+**Solutions**:
+
+1. **Install Java 25**: Download and install from [Oracle](https://www.oracle.com/java/technologies/downloads/) or [Eclipse Adoptium](https://adoptium.net/)
+
+2. **Add Java to PATH**:
+   ```powershell
+   # Open PowerShell as Administrator
+   setx /M JAVA_HOME "C:\Program Files\Java\jdk-25"
+   setx /M PATH "%PATH%;%JAVA_HOME%\bin"
+   ```
+
+3. **Verify Installation**:
+   ```powershell
+   java -version
+   # Should output: java version "25..." or similar
+   ```
+
+4. **Restart Application**: Close and reopen Hytale Server Portal after installing Java
+
+**Supported Installation Locations (auto-detected)**:
+- `C:\Program Files\Java\jdk-25\bin\java.exe`
+- `C:\Program Files\Eclipse Adoptium\jdk-25\bin\java.exe`
+- `C:\Program Files\AdoptOpenJDK\jdk-25\bin\java.exe`
+- `C:\Program Files\Zulu\zulu-25\bin\java.exe`
+- `%JAVA_HOME%\bin\java.exe`
+- System PATH variable
+
+#### Windows: "Downloader not found for this platform"
+
+**Problem**: The Hytale server downloader binary is missing.
+
+**Solutions**:
+
+1. **Check Installation Directory**:
+   ```
+   %APPDATA%\Hytale Server Portal\HytaleServer\hytale-downloader-windows-amd64.exe
+   ```
+
+2. **Reinstall Application**: Download and run the installer again
+
+3. **Manual Fix**: Place the Windows downloader binary in the HytaleServer folder
+
+#### Linux: "Java 25 not found (required)"
+
+**Solutions**:
+
+1. **Install Java 25 via Package Manager**:
+   ```bash
+   # Ubuntu/Debian (if available)
+   sudo apt update
+   sudo apt install openjdk-25-jdk
+   
+   # Or download from Adoptium
+   wget https://github.com/adoptium/temurin25-binaries/releases/download/.../
+   sudo tar -xzf OpenJDK25...tar.gz -C /usr/lib/jvm/
+   sudo update-alternatives --install /usr/bin/java java /usr/lib/jvm/jdk-25/bin/java 1
+   ```
+
+2. **Verify Installation**:
+   ```bash
+   java -version
+   which java
+   ```
+
+3. **Set JAVA_HOME**:
+   ```bash
+   export JAVA_HOME=/usr/lib/jvm/jdk-25
+   export PATH=$JAVA_HOME/bin:$PATH
+   echo "export JAVA_HOME=/usr/lib/jvm/jdk-25" >> ~/.bashrc
+   ```
+
+#### General Issues
+
+### Application Won't Start
+
+**Problem**: Application fails to launch after installation
+
+**Solutions**:
+
+1. **Check Logs**:
+   - Windows: `%APPDATA%\Hytale Server Portal\logs\`
+   - Linux: `~/.config/Hytale Server Portal/logs/`
+   - macOS: `~/Library/Application Support/Hytale Server Portal/logs/`
+
+2. **Delete Configuration** (reset to defaults):
+   - Windows: Delete `%APPDATA%\Hytale Server Portal\.initialized`
+   - Linux: Delete `~/.config/Hytale Server Portal/.initialized`
+
+3. **Reinstall**: Uninstall completely and reinstall fresh
+
+### Server Won't Start
+
+**Problem**: Server fails to start even with Java installed
+
+**Solutions**:
+
+1. **Verify Java Version**:
+   ```bash
+   java -version  # Must show version 25 or higher
+   ```
+
+2. **Check RAM Settings**: Ensure configured RAM doesn't exceed available system memory
+
+3. **Check Server Files**: Verify HytaleServer.jar exists in the server directory:
+   - Windows: `%APPDATA%\Hytale Server Portal\HytaleServer\HytaleServer.jar`
+   - Linux: `~/.config/Hytale Server Portal/HytaleServer/HytaleServer.jar`
+
+4. **Check Server Log**:
+   - Windows: `%APPDATA%\Hytale Server Portal\HytaleServer\server.log`
+   - Linux: `~/.config/Hytale Server Portal/HytaleServer/server.log`
+
+### Permission Denied Errors
+
+**Problem**: Cannot select backup folders or access certain directories
+
+**Solutions**:
+
+1. **Windows**: Ensure the folder is not in a protected system location (use Documents, Desktop, or custom folders)
+2. **Linux**: Check folder permissions with `ls -la` and adjust with `chmod` if needed
+3. **Select Different Location**: Choose a folder you have write access to
+
+### General Application Issues
 
 **Application won't start**
 ```bash
@@ -923,13 +1131,15 @@ This project is proprietary software. All rights reserved.
 ## 🔄 Version History
 
 ### v1.0.0 (Current)
-- Initial release
-- Core server management features
-- Multi-language support (5 languages)
-- Discord integration
-- Backup and restore system
-- Real-time monitoring
-- Secure authentication
+- ✅ **Native Windows Support**: Full Windows 10/11 compatibility without WSL requirement
+- ✅ **Cross-Platform Process Management**: Direct Java process control on Windows and Linux
+- ✅ **Java 25 Auto-Detection**: Automatic Java 25 discovery across multiple installation locations
+- ✅ **Platform Status Monitoring**: Real-time warnings for missing Java or downloader binaries
+- ✅ **Cross-Platform Backups**: AdmZip-based backup/restore system (no external dependencies)
+- ✅ **Multi-Language Support**: 5 languages (English, Spanish, Portuguese, French, Chinese)
+- ✅ **Discord Integration**: Bot and webhook support for server notifications
+- ✅ **Real-Time Monitoring**: CPU, RAM, disk usage tracking
+- ✅ **Secure Authentication**: AES-256-GCM encrypted credential storage
 
 ---
 
