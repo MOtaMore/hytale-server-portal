@@ -7,7 +7,7 @@ class I18n {
   constructor() {
     this.currentLanguage = localStorage.getItem('appLanguage') || 'en';
     this.translations = {};
-    this.supportedLanguages = ['es', 'en', 'pt', 'fr', 'zh'];
+    this.supportedLanguages = ['es', 'en', 'pt', 'fr', 'zh', 'jp', 'kr', 'de'];
     this.loaded = false;
   }
 

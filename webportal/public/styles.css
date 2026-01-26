@@ -818,6 +818,14 @@ button.danger {
   font-size: 32px;
 }
 
+.lang-btn .flag-img {
+  width: 50px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
 .setup-form {
   display: flex;
   flex-direction: column;
