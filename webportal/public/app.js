@@ -1097,49 +1097,6 @@ backupLocationPicker?.addEventListener("change", async (e) => {
   }
 });
 
-// ============ UNINSTALLER ============
-
-const uninstallBtn = document.getElementById("uninstall-btn");
-const uninstallKeepServer = document.getElementById("uninstall-keep-server");
-const uninstallMessage = document.getElementById("uninstall-message");
-
-function showUninstallMessage(text, type = "success") {
-  uninstallMessage.textContent = text;
-  uninstallMessage.className = type;
-  setTimeout(() => {
-    uninstallMessage.textContent = "";
-    uninstallMessage.className = "";
-  }, 5000);
-}
-
-uninstallBtn.addEventListener("click", async () => {
-  const keepServerData = uninstallKeepServer.checked;
-  
-  const confirmMessage = i18n.t("uninstall_confirm");
-  if (!confirm(confirmMessage)) {
-    return;
-  }
-  
-  try {
-    const data = await apiFetch("/api/uninstall", {
-      method: "POST",
-      body: JSON.stringify({ keepServerData })
-    });
-    
-    if (data && data.success) {
-      showUninstallMessage(i18n.t("uninstall_success"), "success");
-      
-      // Wait a bit before closing the window
-      setTimeout(() => {
-        window.close();
-      }, 3000);
-    }
-  } catch (error) {
-    const errorMsg = i18n.t("uninstall_error").replace("{error}", error.message);
-    showUninstallMessage(errorMsg, "error");
-  }
-});
-
 // ============ APPLICATION INITIALIZATION ============
 // Initialize app after i18n system is loaded and ready
 async function refreshPlatformStatus() {

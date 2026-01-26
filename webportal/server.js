@@ -25,8 +25,28 @@ const IS_WINDOWS = process.platform === "win32";
 // Directorio para datos de la aplicación (config, credenciales)
 const USER_DATA_DIR = process.env.USER_DATA_DIR || path.join(os.homedir(), IS_WINDOWS ? "AppData/Roaming/Hytale Server Portal" : ".config/Hytale Server Portal");
 
+function getDocumentsDir() {
+  if (process.env.DOCUMENTS_DIR) return process.env.DOCUMENTS_DIR;
+  if (IS_WINDOWS) return path.join(os.homedir(), "Documents");
+
+  // Intentar respetar XDG en Linux
+  const userDirsFile = path.join(os.homedir(), ".config", "user-dirs.dirs");
+  try {
+    const content = fs.readFileSync(userDirsFile, "utf-8");
+    const match = content.match(/XDG_DOCUMENTS_DIR=\"?(.+?)\"?$/m);
+    if (match && match[1]) {
+      const expanded = match[1].replace("$HOME", os.homedir());
+      return path.resolve(expanded);
+    }
+  } catch {
+    // si no existe, seguimos con el fallback
+  }
+
+  return path.join(os.homedir(), "Documents");
+}
+
 // Directorio base donde se almacenará y ejecutará el servidor Hytale y los downloaders
-const DOCUMENTS_DIR = path.join(os.homedir(), IS_WINDOWS ? "Documents" : "Documents");
+const DOCUMENTS_DIR = getDocumentsDir();
 
 // Resolver RESOURCE_BASE_DIR correctamente en diferentes contextos
 let RESOURCE_BASE_DIR = null;
@@ -171,6 +191,10 @@ async function ensureBaseDir() {
     
     await fsp.mkdir(BASE_DIR, { recursive: true });
 
+    const filesToCopy = IS_WINDOWS
+      ? ["hytale-downloader-windows-amd64.exe", "start-server.bat", "stop-server.bat"]
+      : ["hytale-downloader-linux-amd64", "start-server.sh", "stop-server.sh"];
+
     const marker = path.join(BASE_DIR, ".initialized");
     if (fs.existsSync(marker)) {
       console.log("[Init] Ya inicializado previamente");
@@ -193,6 +217,19 @@ async function ensureBaseDir() {
         }
         console.log("[Init] Downloader copiado en:", userPath);
       }
+
+      // Reponer scripts y downloader que falten
+      for (const file of filesToCopy) {
+        const sourcePath = path.join(RESOURCE_BASE_DIR, file);
+        const destPath = path.join(BASE_DIR, file);
+        if (!fs.existsSync(destPath) && fs.existsSync(sourcePath)) {
+          console.log(`[Init] Restaurando ${file} en BASE_DIR...`);
+          await fsp.copyFile(sourcePath, destPath);
+          if (!IS_WINDOWS && (file.includes("downloader") || file.endsWith(".sh"))) {
+            await fsp.chmod(destPath, 0o755);
+          }
+        }
+      }
       return;
     }
 
@@ -200,11 +237,6 @@ async function ensureBaseDir() {
     console.log("[Init] Verificando recursos en:", RESOURCE_BASE_DIR);
     if (fs.existsSync(RESOURCE_BASE_DIR)) {
       console.log("[Init] Copiando recursos desde:", RESOURCE_BASE_DIR);
-      
-      // Copiar archivos específicos del sistema operativo
-      const filesToCopy = IS_WINDOWS
-        ? ["hytale-downloader-windows-amd64.exe", "start-server.bat", "stop-server.bat"]
-        : ["hytale-downloader-linux-amd64", "start-server.sh", "stop-server.sh"];
       
       for (const file of filesToCopy) {
         const sourcePath = path.join(RESOURCE_BASE_DIR, file);
@@ -2285,72 +2317,6 @@ app.post("/api/auth/config", async (req, res) => {
     await authService.saveServerAuthConfig(config);
     res.json({ success: true, config });
   } catch (error) {
-    res.status(500).json({ error: formatError(error) });
-  }
-});
-
-// ============ UNINSTALLER ENDPOINT ============
-app.post("/api/uninstall", async (req, res) => {
-  try {
-    const { keepServerData } = req.body;
-    
-    console.log("[Uninstall] Starting uninstall process...");
-    console.log("[Uninstall] Keep server data:", keepServerData);
-    
-    // Lista de archivos y carpetas a eliminar
-    const itemsToDelete = [];
-    
-    // Siempre eliminar configuración de la aplicación
-    if (fs.existsSync(AUTH_CONFIG_PATH)) {
-      itemsToDelete.push(AUTH_CONFIG_PATH);
-    }
-    if (fs.existsSync(SERVER_AUTH_CONFIG_PATH)) {
-      itemsToDelete.push(SERVER_AUTH_CONFIG_PATH);
-    }
-    if (fs.existsSync(DISCORD_CONFIG_PATH)) {
-      itemsToDelete.push(DISCORD_CONFIG_PATH);
-    }
-    if (fs.existsSync(SETUP_CONFIG_PATH)) {
-      itemsToDelete.push(SETUP_CONFIG_PATH);
-    }
-    
-    // Si no se mantienen los datos del servidor, eliminar también BASE_DIR
-    if (!keepServerData && fs.existsSync(BASE_DIR)) {
-      itemsToDelete.push(BASE_DIR);
-    }
-    
-    // Eliminar archivos y carpetas
-    for (const item of itemsToDelete) {
-      try {
-        const stats = await fsp.stat(item);
-        if (stats.isDirectory()) {
-          await fsp.rm(item, { recursive: true, force: true });
-          console.log(`[Uninstall] Deleted directory: ${item}`);
-        } else {
-          await fsp.unlink(item);
-          console.log(`[Uninstall] Deleted file: ${item}`);
-        }
-      } catch (err) {
-        console.error(`[Uninstall] Error deleting ${item}:`, err.message);
-      }
-    }
-    
-    console.log("[Uninstall] Uninstall completed successfully");
-    
-    res.json({
-      success: true,
-      message: "Application uninstalled successfully",
-      deletedItems: itemsToDelete.length,
-      keptServerData: keepServerData
-    });
-    
-    // Cerrar la aplicación después de 2 segundos
-    setTimeout(() => {
-      console.log("[Uninstall] Closing application...");
-      process.exit(0);
-    }, 2000);
-  } catch (error) {
-    console.error("[Uninstall] Error during uninstall:", error);
     res.status(500).json({ error: formatError(error) });
   }
 });

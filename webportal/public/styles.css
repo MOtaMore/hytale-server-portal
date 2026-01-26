@@ -29,27 +29,24 @@ body {
   min-height: 100vh;
 }
 
-.sidebar {
-  background: var(--panel);
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
+.message {
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  margin-top: 8px;
 }
 
-.brand h1 {
-  margin: 0;
-  font-size: 24px;
+.message.success {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #4CAF50;
+  border-left: 3px solid #4CAF50;
 }
 
-.brand span {
-  color: var(--muted);
-  font-size: 14px;
+.message.error {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #F44336;
+  border-left: 3px solid #F44336;
 }
-
-.nav {
-  display: flex;
-  flex-direction: column;
   gap: 12px;
 }
 
@@ -429,6 +426,13 @@ button.danger {
 .form-group input[type="password"]:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.form-group small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .checkbox-label {
@@ -999,85 +1003,6 @@ button.secondary:disabled {
 }
 
 .message.error {
-  background-color: rgba(244, 67, 54, 0.1);
-  color: #F44336;
-  border-left: 3px solid #F44336;
-}
-/* ============ UNINSTALLER STYLES ============ */
-.uninstall-config {
-  max-width: 800px;
-}
-
-.danger-zone {
-  border: 2px solid var(--danger);
-  background: rgba(255, 92, 92, 0.05);
-}
-
-.danger-zone h3 {
-  color: var(--danger);
-  margin-top: 0;
-}
-
-.uninstall-info {
-  background: var(--panel-2);
-  padding: 16px;
-  border-radius: 8px;
-  margin: 16px 0;
-}
-
-.uninstall-info h4 {
-  margin-top: 0;
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.uninstall-info ul {
-  margin: 8px 0;
-  padding-left: 24px;
-}
-
-.uninstall-info li {
-  margin: 6px 0;
-  color: var(--muted);
-}
-
-.checkbox-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.checkbox-label input[type="checkbox"] {
-  cursor: pointer;
-  width: 18px;
-  height: 18px;
-}
-
-.form-group small {
-  display: block;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-#uninstall-message {
-  display: block;
-  margin-top: 12px;
-  padding: 10px;
-  border-radius: 6px;
-  min-height: 20px;
-}
-
-#uninstall-message.success {
-  background-color: rgba(76, 175, 80, 0.1);
-  color: #4CAF50;
-  border-left: 3px solid #4CAF50;
-}
-
-#uninstall-message.error {
   background-color: rgba(244, 67, 54, 0.1);
   color: #F44336;
   border-left: 3px solid #F44336;

@@ -203,21 +203,5 @@
   "discord_description_online": "Hytale 서버가 성공적으로 시작되었습니다.",
   "discord_description_offline": "Hytale 서버가 중지되었습니다.",
   "discord_footer": "Hytale 관리 패널",
-  "discord_channel_online": "상태-온",
-  
-  "nav_uninstall": "제거",
-  "uninstall_title": "애플리케이션 제거",
-  "uninstall_warning_title": "⚠️ 위험 구역",
-  "uninstall_warning_description": "이 작업은 애플리케이션 구성을 제거합니다. 서버 데이터를 유지할지 삭제할지 선택할 수 있습니다.",
-  "uninstall_keep_server_data": "서버 데이터 유지",
-  "uninstall_keep_server_help": "이 옵션이 활성화되면 애플리케이션 구성만 삭제됩니다. 서버 파일은 보존됩니다.",
-  "uninstall_what_will_be_deleted": "삭제될 항목:",
-  "uninstall_item_config": "애플리케이션 구성",
-  "uninstall_item_auth": "인증 자격 증명",
-  "uninstall_item_discord": "Discord 구성",
-  "uninstall_item_server": "서버 파일(체크박스가 표시되지 않은 경우)",
-  "uninstall_button": "애플리케이션 제거",
-  "uninstall_success": "애플리케이션이 제거되었습니다. 창이 자동으로 닫힙니다.",
-  "uninstall_confirm": "애플리케이션을 제거하시겠습니까? 이 작업은 취소할 수 없습니다.",
-  "uninstall_error": "제거 오류: {error}"
+  "discord_channel_online": "상태-온"  
 }

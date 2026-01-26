@@ -92,7 +92,6 @@
           <button class="nav-item" data-view="backups" data-i18n="nav_backups">Backups</button>
           <button class="nav-item" data-view="config" data-i18n="nav_config">Config</button>
           <button class="nav-item" data-view="discord" data-i18n="nav_discord">Discord</button>
-          <button class="nav-item" data-view="uninstall" data-i18n="nav_uninstall">Desinstalar</button>
         </nav>
         <div class="auth-box" id="auth-box">
           <div class="auth-title" data-i18n="auth_title">Acceso</div>
@@ -411,44 +410,6 @@
           </div>
         </section>
 
-        <section class="view" id="view-uninstall">
-          <div class="header">
-            <h2 data-i18n="uninstall_title">Desinstalar</h2>
-          </div>
-          <div class="uninstall-config">
-            <div class="card danger-zone">
-              <h3 data-i18n="uninstall_warning_title">⚠️ Zona Peligrosa</h3>
-              <p data-i18n="uninstall_warning_description">
-                Esta acción eliminará la configuración de la aplicación. Puedes elegir si mantener o eliminar también los datos del servidor.
-              </p>
-              
-              <div class="form-group">
-                <label class="checkbox-label">
-                  <input id="uninstall-keep-server" type="checkbox" checked />
-                  <span data-i18n="uninstall_keep_server_data">Mantener datos del servidor</span>
-                </label>
-                <small data-i18n="uninstall_keep_server_help">
-                  Si esta opción está activada, solo se eliminará la configuración de la aplicación. Los archivos del servidor se conservarán.
-                </small>
-              </div>
-              
-              <div class="uninstall-info">
-                <h4 data-i18n="uninstall_what_will_be_deleted">Qué se eliminará:</h4>
-                <ul id="uninstall-items-list">
-                  <li data-i18n="uninstall_item_config">Configuración de la aplicación</li>
-                  <li data-i18n="uninstall_item_auth">Credenciales de autenticación</li>
-                  <li data-i18n="uninstall_item_discord">Configuración de Discord</li>
-                  <li id="uninstall-server-item" data-i18n="uninstall_item_server">Archivos del servidor (si no se marca la casilla)</li>
-                </ul>
-              </div>
-              
-              <div class="actions">
-                <button id="uninstall-btn" class="danger" data-i18n="uninstall_button">Desinstalar Aplicación</button>
-              </div>
-              <small id="uninstall-message"></small>
-            </div>
-          </div>
-        </section>
       </main>
       <aside class="help-drawer" id="help-drawer">
         <div class="help-drawer-header">
