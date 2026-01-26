@@ -53,37 +53,30 @@ const CONFIG_PATH = path.join(BASE_DIR, "config.json");
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 1000 * 60 * 60 * 8);
 const DISCORD_CONFIG_PATH = path.join(USER_DATA_DIR, "discord-config.json");
 
-// Función para encontrar el downloader
-// Primero busca en RESOURCE_BASE_DIR (durante compilación con Electron)
-// Luego en BASE_DIR (descarga manual o desarrollo)
-function getDownloaderPath() {
+// Función para resolver dinámicamente la ruta del downloader
+// Busca primero en BASE_DIR (directorio de datos del usuario) y luego en RESOURCE_BASE_DIR (empaquetado)
+function resolveDownloaderPath() {
   const downloaderFileName = IS_WINDOWS
     ? "hytale-downloader-windows-amd64.exe"
     : "hytale-downloader-linux-amd64";
 
-  // Prioridad 1: BASE_DIR (ya copiado durante inicialización)
   const userPath = path.join(BASE_DIR, downloaderFileName);
-  if (fs.existsSync(userPath)) {
-    return userPath;
-  }
-
-  // Prioridad 2: RESOURCE_BASE_DIR (archivos empaquetados con la app)
   const resourcePath = path.join(RESOURCE_BASE_DIR, downloaderFileName);
-  if (fs.existsSync(resourcePath)) {
-    return resourcePath;
+
+  if (fs.existsSync(userPath)) {
+    return { path: userPath, source: "user" };
   }
 
-  // Fallback: retornar la ruta esperada en BASE_DIR aunque no exista
-  return userPath;
+  if (fs.existsSync(resourcePath)) {
+    return { path: resourcePath, source: "resource" };
+  }
+
+  // Fallback preferido (aunque no exista) es BASE_DIR
+  return { path: userPath, source: "user" };
 }
 
-// NOTA: No usar const aquí, getDownloaderPath() debe llamarse dinámicamente
-// para que detecte el archivo después de que ensureBaseDir() lo copie
-function getDownloaderPathDynamic() {
-  return getDownloaderPath();
-}
-
-const DOWNLOADER_PATH = getDownloaderPath();
+// Conservamos esta constante para logs iniciales; el resto del código usa resolveDownloaderPath()
+const DOWNLOADER_PATH = resolveDownloaderPath().path;
 const AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, ".auth-secure");
 const SERVER_AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, "server-auth.json");
 const DOWNLOAD_STATUS_PATH = path.join(BASE_DIR, ".download-status.json");
@@ -175,10 +168,25 @@ async function ensureBaseDir() {
     const marker = path.join(BASE_DIR, ".initialized");
     if (fs.existsSync(marker)) {
       console.log("[Init] Ya inicializado previamente");
-      // Verificar si el downloader existe después de inicialización
-      const downloaderPath = getDownloaderPath();
-      console.log("[Init] DOWNLOADER_PATH:", downloaderPath);
-      console.log("[Init] Downloader existe:", fs.existsSync(downloaderPath) ? "✓ SÍ" : "✗ NO");
+      const resolved = resolveDownloaderPath();
+      console.log("[Init] DOWNLOADER_PATH:", resolved.path, "(source:", resolved.source, ")");
+      console.log("[Init] Downloader existe:", fs.existsSync(resolved.path) ? "✓ SÍ" : "✗ NO");
+
+      // Si el downloader no existe en BASE_DIR pero sí en RESOURCE_BASE_DIR, copiarlo
+      const downloaderFileName = IS_WINDOWS
+        ? "hytale-downloader-windows-amd64.exe"
+        : "hytale-downloader-linux-amd64";
+      const userPath = path.join(BASE_DIR, downloaderFileName);
+      const resourcePath = path.join(RESOURCE_BASE_DIR, downloaderFileName);
+      if (!fs.existsSync(userPath) && fs.existsSync(resourcePath)) {
+        console.log("[Init] Downloader faltante en BASE_DIR, copiando desde recursos empaquetados...");
+        await fsp.mkdir(BASE_DIR, { recursive: true });
+        await fsp.copyFile(resourcePath, userPath);
+        if (!IS_WINDOWS) {
+          await fsp.chmod(userPath, 0o755);
+        }
+        console.log("[Init] Downloader copiado en:", userPath);
+      }
       return;
     }
 
@@ -217,9 +225,9 @@ async function ensureBaseDir() {
 
     await fsp.writeFile(marker, "ok", "utf-8");
     console.log("[Init] Directorio base inicializado correctamente");
-    const downloaderPath = getDownloaderPath();
-    console.log("[Init] DOWNLOADER_PATH:", downloaderPath);
-    console.log("[Init] Downloader existe:", fs.existsSync(downloaderPath) ? "✓ SÍ" : "✗ NO");
+    const resolved = resolveDownloaderPath();
+    console.log("[Init] DOWNLOADER_PATH:", resolved.path, "(source:", resolved.source, ")");
+    console.log("[Init] Downloader existe:", fs.existsSync(resolved.path) ? "✓ SÍ" : "✗ NO");
   } catch (error) {
     console.error("[Init] Error preparando directorio base:", error.message);
     console.error("[Init] Stack:", error.stack);
@@ -293,7 +301,7 @@ let serverLogStream = null;
 
 async function downloaderExists() {
   try {
-    const downloaderPath = getDownloaderPath();
+    const { path: downloaderPath } = resolveDownloaderPath();
     await fsp.access(downloaderPath, fs.constants.X_OK);
     return true;
   } catch {
@@ -1296,7 +1304,7 @@ class DownloaderService {
   }
 
   async status() {
-    const downloaderPath = getDownloaderPath();
+    const { path: downloaderPath, source } = resolveDownloaderPath();
     const exists = fs.existsSync(downloaderPath);
     let isExecutable = false;
     let version = null;
@@ -1363,19 +1371,20 @@ class DownloaderService {
       isInstalled,
       isAuthenticated,
       lastDownload,
-      path: downloaderPath
+      path: downloaderPath,
+      source
     };
   }
 
   async download() {
-    const downloaderPath = getDownloaderPath();
+    const { path: downloaderPath } = resolveDownloaderPath();
     const downloaderExists = fs.existsSync(downloaderPath);
     if (!downloaderExists) {
       throw new Error("El descargador de Hytale no existe en la ruta especificada");
     }
 
     const stats = await fsp.stat(downloaderPath);
-    if (!(stats.mode & fs.constants.X_OK)) {
+    if (!IS_WINDOWS && !(stats.mode & fs.constants.X_OK)) {
       await fsp.chmod(downloaderPath, 0o755);
     }
 
@@ -1419,7 +1428,7 @@ class DownloaderService {
   }
 
   startAuthFlow() {
-    const downloaderPath = getDownloaderPath();
+    const { path: downloaderPath } = resolveDownloaderPath();
     const exists = fs.existsSync(downloaderPath);
     if (!exists) {
       throw new Error("El descargador de Hytale no existe en la ruta especificada");
