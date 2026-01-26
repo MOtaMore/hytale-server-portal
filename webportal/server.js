@@ -52,9 +52,27 @@ const SCREEN_NAME = "HytaleServer";
 const CONFIG_PATH = path.join(BASE_DIR, "config.json");
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 1000 * 60 * 60 * 8);
 const DISCORD_CONFIG_PATH = path.join(USER_DATA_DIR, "discord-config.json");
-const DOWNLOADER_PATH = IS_WINDOWS
-  ? path.join(BASE_DIR, "hytale-downloader-windows-amd64.exe")
-  : path.join(BASE_DIR, "hytale-downloader-linux-amd64");
+
+// Función para encontrar el downloader
+// Primero busca en RESOURCE_BASE_DIR (durante compilación con Electron)
+// Luego en BASE_DIR (descarga manual o desarrollo)
+function getDownloaderPath() {
+  const downloaderFileName = IS_WINDOWS
+    ? "hytale-downloader-windows-amd64.exe"
+    : "hytale-downloader-linux-amd64";
+
+  // Prioridad 1: RESOURCE_BASE_DIR (archivos empaquetados con la app)
+  const resourcePath = path.join(RESOURCE_BASE_DIR, downloaderFileName);
+  if (fs.existsSync(resourcePath)) {
+    return resourcePath;
+  }
+
+  // Prioridad 2: BASE_DIR (descarga manual)
+  const userPath = path.join(BASE_DIR, downloaderFileName);
+  return userPath;
+}
+
+const DOWNLOADER_PATH = getDownloaderPath();
 const AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, ".auth-secure");
 const SERVER_AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, "server-auth.json");
 const DOWNLOAD_STATUS_PATH = path.join(BASE_DIR, ".download-status.json");
@@ -140,6 +158,8 @@ async function ensureBaseDir() {
     console.log("[Init] USER_DATA_DIR:", USER_DATA_DIR);
     console.log("[Init] RESOURCE_BASE_DIR:", RESOURCE_BASE_DIR);
     console.log("[Init] BASE_DIR:", BASE_DIR);
+    console.log("[Init] DOWNLOADER_PATH:", DOWNLOADER_PATH);
+    console.log("[Init] Downloader existe:", fs.existsSync(DOWNLOADER_PATH) ? "✓ SÍ" : "✗ NO");
     
     await fsp.mkdir(BASE_DIR, { recursive: true });
 
