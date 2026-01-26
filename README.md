@@ -4,7 +4,7 @@
 
 ![License](https://img.shields.io/badge/license-Private-red)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux-blue)
-![Version](https://img.shields.io/badge/version-1.2.0-green)
+![Version](https://img.shields.io/badge/version-1.3.0-green)
 ![Java](https://img.shields.io/badge/Java-25%2B-orange)
 
 ## 📋 Table of Contents
@@ -43,10 +43,11 @@
 - ✅ **All-in-One Solution**: Manage every aspect of your server from a single interface
 - ✅ **Native Cross-Platform**: Windows 10/11 and Linux support without WSL or external scripts
 - ✅ **Java 25 Ready**: Automatic detection across multiple Java vendors and installation paths
-- ✅ **Multi-Language Support**: Full internationalization (i18n) for 5 languages (English, Spanish, Portuguese, French, Chinese)
+- ✅ **Multi-Language Support**: Full internationalization (i18n) for 8 languages (English, Spanish, Portuguese, French, Chinese, Japanese, Korean, German)
 - ✅ **Secure Authentication**: Protected endpoints with AES-256-GCM encrypted credential storage
 - ✅ **Real-Time Monitoring**: Live CPU, RAM, and disk space monitoring with cross-platform process tracking
 - ✅ **Professional UI**: Modern, responsive interface with dark theme and platform status alerts
+- ✅ **Self-Contained Architecture**: All server binaries packaged within the application - no external dependencies
 
 ---
 
@@ -84,10 +85,11 @@
 - **Bot Configuration**: Easy Discord bot setup and management
 - **Custom Messages**: Configurable notification templates
 
-### 🌐 Internationalization
-- **5 Languages**: English, Spanish, Portuguese, French, Chinese
+### 8 Languages**: English, Spanish, Portuguese, French, Chinese, Japanese, Korean, German
 - **Instant Switching**: Change language without restart
 - **Locale-Aware**: Date formatting and number display per locale
+- **Complete Coverage**: All UI strings translated
+- **Flag Icons**: Visual language selection with country flagsplay per locale
 - **Complete Coverage**: All UI strings translated
 
 ### 🔐 Security Features
@@ -532,29 +534,36 @@ hytale-server-portal/
 │   ├── preload.js                 # Electron preload script
 │   ├── server.js                  # Express backend server
 │   ├── package.json               # Dependencies and scripts
-│   ├── electron-builder.yml       # Build configuration
+│   ├── electron-builder-config.json  # Alternative build config
 │   ├── public/
 │   │   ├── index.html            # Main application page
 │   │   ├── app.js                # Frontend logic
 │   │   ├── styles.css            # Application styling
 │   │   ├── i18n-loader.js        # i18n system
-│   │   ├── i18n.js               # Translation definitions
-│   │   ├── preload.js            # IPC communication
+│   │   ├── assets/               # UI assets (flags, icons)
 │   │   └── translations/          # Translation JSON files
-│   │       ├── en.json
-│   │       ├── es.json
-│   │       ├── pt.json
-│   │       ├── fr.json
-│   │       └── zh.json
+│   │       ├── en.json           # English
+│   │       ├── es.json           # Spanish
+│   │       ├── pt.json           # Portuguese
+│   │       ├── fr.json           # French
+│   │       ├── zh.json           # Chinese
+│   │       ├── jp.json           # Japanese
+│   │       ├── kr.json           # Korean
+│   │       └── de.json           # German
+│   ├── resources/                 # Embedded server resources
+│   │   └── HytaleServer/
+│   │       ├── hytale-downloader-linux-amd64       # Linux binary
+│   │       ├── hytale-downloader-windows-amd64.exe # Windows binary
+│   │       ├── start-server.sh   # Linux startup script
+│   │       ├── start-server.bat  # Windows startup script
+│   │       ├── stop-server.sh    # Linux stop script
+│   │       └── stop-server.bat   # Windows stop script
 │   ├── assets/
 │   │   ├── icon.ico              # Windows icon
 │   │   ├── icon.png              # Linux icon
 │   │   └── icon.icns             # macOS icon
 │   └── dist/                      # Build output directory
-└── HytaleServer/                  # Server binaries and scripts
-    ├── hytale-downloader-linux-amd64    # Linux downloader binary
-    ├── hytale-downloader-windows-amd64.exe  # Windows downloader binary
-    ├── start-server.sh              # Linux server startup script
+└── README.md                       # Project documentationipt
     └── stop-server.sh               # Linux server stop script
 ```
 
@@ -814,31 +823,58 @@ xcode-select --install
 
 ---
 
-## ⚙️ Configuration
-
-### Configuration Files Location
-
-The application stores all configuration and data files in platform-specific directories:
-
-#### Windows
-```
+# User Data Directory (Application Settings)
 %APPDATA%\Hytale Server Portal\
-├── config.json                  # Application configuration
-├── users.json                   # Admin credentials
-├── .initialized                 # Setup completion marker
-├── HytaleServer/                # Server directory
-│   ├── HytaleServer.jar
-│   ├── server.log
-│   ├── server-config.json       # RAM/threads configuration
-│   ├── hytale-downloader-windows-amd64.exe
-│   └── credentials.json         # Downloader authentication
+├── .auth-secure                 # Encrypted authentication
+├── server-auth.json             # Server credentials
+├── discord-config.json          # Discord bot configuration
+└── setup-config.json            # Setup completion marker
+
+# Documents Directory (Server Data)
+%USERPROFILE%\Documents\HytaleServerData\
+├── HytaleServer.jar             # Downloaded server JAR
+├── Assets.zip                   # Server assets
+├── server.log                   # Server console logs
+├── config.json                  # Server configuration
+├── server-config.json           # RAM/threads configuration
+├── backup-config.json           # Backup settings
+├── .download-status.json        # Download state
+├── .hytale-downloader-credentials.json  # Downloader auth
+└── backups/                     # Default backup location
+# User Data Directory (Application Settings)
+~/.config/Hytale Server Portal/
+├── .auth-secure                 # Encrypted authentication
+├── server-auth.json             # Server credentials
+├── discord-config.json          # Discord bot configuration
+└── setup-config.json            # Setup completion marker
+
+# Documents Directory (Server Data)
+~/Documents/HytaleServerData/
+├── HytaleServer.jar             # Downloaded server JAR
+├── Assets.zip                   # Server assets
+├── server.log                   # Server console logs
+├── config.json                  # Server configuration
+├── server-config.json           # RAM/threads configuration
+├── backup-config.json           # Backup settings
+├── .download-status.json        # Download state
+├── .hytale-downloader-credentials.json  # Downloader auth
 └── backups/                     # Default backup location
     └── *.zip
-```
+# User Data Directory (Application Settings)
+~/Library/Application Support/Hytale Server Portal/
+├── .auth-secure
+├── server-auth.json
+├── discord-config.json
+└── setup-config.json
 
-**Example Full Path**: `C:\Users\YourUsername\AppData\Roaming\Hytale Server Portal\config.json`
-
-#### Linux
+# Documents Directory (Server Data)
+~/Documents/HytaleServerData/
+├── HytaleServer.jar
+├── Assets.zip
+├── server.log
+├── config.json
+├── server-config.jsonyourusername/.config/Hytale Server Portal/setup-config.json`
+- Server Data: `/home/yourusername/Documents/HytaleServerData/HytaleServer.jar
 ```
 ~/.config/Hytale Server Portal/
 ├── config.json                  # Application configuration
@@ -905,14 +941,16 @@ Language-specific UI strings for all 5 supported languages.
 #### Windows: "Java 25 not found (required)"
 
 **Problem**: The application cannot detect Java 25 on your system.
+Application Resources**: The downloader is now embedded in the application. Verify the app is correctly installed.
 
-**Solutions**:
+2. **Reinstall Application**: Download and run the installer again to restore embedded resources.
 
-1. **Install Java 25**: Download and install from [Oracle](https://www.oracle.com/java/technologies/downloads/) or [Eclipse Adoptium](https://adoptium.net/)
+3. **Check Logs**: Look for initialization errors in:
+   ```
+   %APPDATA%\Hytale Server Portal\logs\
+   ```
 
-2. **Add Java to PATH**:
-   ```powershell
-   # Open PowerShell as Administrator
+**Note**: Since v1.3.0, the downloader binaries are packaged inside the application itself, not copied to Documents. This error usually indicates a corrupted installation.
    setx /M JAVA_HOME "C:\Program Files\Java\jdk-25"
    setx /M PATH "%PATH%;%JAVA_HOME%\bin"
    ```
@@ -939,14 +977,16 @@ Language-specific UI strings for all 5 supported languages.
 
 **Solutions**:
 
-1. **Check Installation Directory**:
+1. **Check Application Resources**: The downloader is now embedded in the application. Verify the app is correctly installed.
+
+2. **Reinstall Application**: Download and run the installer again to restore embedded resources.
+
+3. **Check Logs**: Look for initialization errors in:
    ```
-   %APPDATA%\Hytale Server Portal\HytaleServer\hytale-downloader-windows-amd64.exe
+   %APPDATA%\Hytale Server Portal\logs\
    ```
 
-2. **Reinstall Application**: Download and run the installer again
-
-3. **Manual Fix**: Place the Windows downloader binary in the HytaleServer folder
+**Note**: Since v1.3.0, the downloader binaries are packaged inside the application itself, not copied to Documents. This error usually indicates a corrupted installation.
 
 #### Linux: "Java 25 not found (required)"
 
@@ -995,10 +1035,11 @@ Language-specific UI strings for all 5 supported languages.
    - Linux: Delete `~/.config/Hytale Server Portal/.initialized`
 
 3. **Reinstall**: Uninstall completely and reinstall fresh
+application cache (settings only, preserves server data)
+rm -rf ~/.config/Hytale\ Server\ Portal  # Linux/macOS
+rmdir /s "%APPDATA%\Hytale Server Portal"  # Windows
 
-### Server Won't Start
-
-**Problem**: Server fails to start even with Java installed
+# Server data is safe in Documents/HytaleServerData**Problem**: Server fails to start even with Java installed
 
 **Solutions**:
 
@@ -1100,20 +1141,31 @@ When reporting issues, include:
 - Detailed error message
 - Steps to reproduce
 - System specifications (CPU, RAM, OS)
+3.0 (Current)
+- ✅ **Self-Contained Architecture**: Server binaries now embedded within the application
+- ✅ **Separated Data Storage**: Clean separation between app resources (read-only) and server data (writable)
+- ✅ **Enhanced Language Support**: Added Japanese, Korean, and German (8 languages total)
+- ✅ **Improved Reliability**: No more file copying errors - resources used directly from app bundle
+- ✅ **Optimized Build**: Smaller installer size with better resource management
+- ✅ **Better Data Organization**: Server data in Documents/HytaleServerData for easy backup/access
 
-### Feature Requests
+### v1.2.0
+- ✅ **Native Windows Support**: Full Windows 10/11 compatibility without WSL requirement
+- ✅ **Cross-Platform Process Management**: Direct Java process control on Windows and Linux
+- ✅ **Java 25 Auto-Detection**: Automatic Java 25 discovery across multiple installation locations
+- ✅ **Platform Status Monitoring**: Real-time warnings for missing Java or downloader binaries
+- ✅ **Cross-Platform Backups**: AdmZip-based backup/restore system (no external dependencies)
 
-Have ideas for improvements? Submit feature requests on GitHub with:
-- Clear description of requested feature
-- Use case and benefits
-- Suggested implementation approach
+### v1.0.0
+- ✅ **Initial Release**: Core server management features
+- ✅ **Multi-Language Support**: 5 languages (English, Spanish, Portuguese, French, Chinese)
+- ✅ **Discord Integration**: Bot and webhook support for server notifications
+- ✅ **Real-Time Monitoring**: CPU, RAM, disk usage tracking
+- ✅ **Secure Authentication**: AES-256-GCM encrypted credential storage
 
 ---
 
-## 📄 License
-
-This project is proprietary software. All rights reserved.
-
+**Last Updated**: January 26
 **Copyright © 2026 Hytale Server Portal Contributors**
 
 ---
