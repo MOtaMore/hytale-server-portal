@@ -22,11 +22,32 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 const IS_WINDOWS = process.platform === "win32";
-const USER_DATA_DIR = process.env.USER_DATA_DIR || path.join(os.homedir(), ".hytale-server-portal");
-const RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
+const USER_DATA_DIR = process.env.USER_DATA_DIR || path.join(os.homedir(), IS_WINDOWS ? "AppData/Roaming/Hytale Server Portal" : ".config/Hytale Server Portal");
+
+// Resolver RESOURCE_BASE_DIR correctamente en diferentes contextos
+let RESOURCE_BASE_DIR = null;
+
+// Contexto 1: En desarrollo (desde webportal/server.js)
+if (__dirname.includes("webportal")) {
+  RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
+}
+// Contexto 2: En producción con ASAR
+else if (__dirname.includes("app.asar.unpacked")) {
+  RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "..", "HytaleServer");
+}
+// Contexto 3: En producción con ASAR (alternativa)
+else if (__dirname.includes("resources")) {
+  const appPath = path.dirname(path.dirname(__dirname));
+  RESOURCE_BASE_DIR = path.join(appPath, "HytaleServer");
+}
+// Fallback
+else {
+  RESOURCE_BASE_DIR = path.resolve(__dirname, "..", "HytaleServer");
+}
+
 const BASE_DIR = path.join(USER_DATA_DIR, "HytaleServer");
-const START_SCRIPT = path.join(BASE_DIR, "start-server.sh");
-const STOP_SCRIPT = path.join(BASE_DIR, "stop-server.sh");
+const START_SCRIPT = path.join(BASE_DIR, IS_WINDOWS ? "start-server.bat" : "start-server.sh");
+const STOP_SCRIPT = path.join(BASE_DIR, IS_WINDOWS ? "stop-server.bat" : "stop-server.sh");
 const SCREEN_NAME = "HytaleServer";
 const CONFIG_PATH = path.join(BASE_DIR, "config.json");
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 1000 * 60 * 60 * 8);
@@ -99,11 +120,15 @@ const DATA_DISK_PATHS = [
   "/media/motamore/DATA"
 ];
 
-const HIDDEN_EXTENSIONS = new Set([".sh"]);
+const HIDDEN_EXTENSIONS = new Set([".sh", ".bat"]);
 const HIDDEN_FILES = new Set([
   "hytale-downloader-linux-amd64",
   "hytale-downloader-windows-amd64.exe",
-  ".hytale-downloader-credentials.json"
+  ".hytale-downloader-credentials.json",
+  "start-server.bat",
+  "stop-server.bat",
+  "start-server.sh",
+  "stop-server.sh"
 ]);
 const tokens = new Map();
 
@@ -112,25 +137,38 @@ fs.mkdirSync(USER_DATA_DIR, { recursive: true });
 
 async function ensureBaseDir() {
   try {
+    console.log("[Init] Sistema detectado:", IS_WINDOWS ? "Windows" : "Linux/macOS");
+    console.log("[Init] USER_DATA_DIR:", USER_DATA_DIR);
+    console.log("[Init] RESOURCE_BASE_DIR:", RESOURCE_BASE_DIR);
+    console.log("[Init] BASE_DIR:", BASE_DIR);
+    
     await fsp.mkdir(BASE_DIR, { recursive: true });
 
     const marker = path.join(BASE_DIR, ".initialized");
     if (fs.existsSync(marker)) {
+      console.log("[Init] Ya inicializado previamente");
       return;
     }
 
     // Copiar recursos iniciales del directorio empaquetado si existen
+    console.log("[Init] Verificando recursos en:", RESOURCE_BASE_DIR);
     if (fs.existsSync(RESOURCE_BASE_DIR)) {
+      console.log("[Init] Copiando recursos desde:", RESOURCE_BASE_DIR);
       await fsp.cp(RESOURCE_BASE_DIR, BASE_DIR, {
         recursive: true,
         force: false,
         errorOnExist: false
       });
+      console.log("[Init] Recursos copiados correctamente");
+    } else {
+      console.warn("[Init] ADVERTENCIA: Directorio de recursos no encontrado en:", RESOURCE_BASE_DIR);
     }
 
     await fsp.writeFile(marker, "ok", "utf-8");
+    console.log("[Init] Directorio base inicializado correctamente");
   } catch (error) {
     console.error("[Init] Error preparando directorio base:", error.message);
+    console.error("[Init] Stack:", error.stack);
     throw error;
   }
 }
@@ -2014,9 +2052,29 @@ app.use((req, res) => {
   res.status(404).json({ error: "No encontrado" });
 });
 
+// ============ SETUP LOG FILE ============
+// Crear archivo de log para debugging en Windows
+const LOG_FILE = path.join(USER_DATA_DIR, "app.log");
+const logStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
+
+// Redirect console.log y console.error al archivo de log
+const originalLog = console.log;
+const originalError = console.error;
+
+console.log = function(...args) {
+  originalLog.apply(console, args);
+  logStream.write(new Date().toISOString() + " [LOG] " + args.join(" ") + "\n");
+};
+
+console.error = function(...args) {
+  originalError.apply(console, args);
+  logStream.write(new Date().toISOString() + " [ERROR] " + args.join(" ") + "\n");
+};
+
 app.listen(PORT, () => {
   console.log(`Server is listening on http://localhost:${PORT}`);
   console.log(`Panel web activo en http://localhost:${PORT}`);
+  console.log(`Archivo de log: ${LOG_FILE}`);
   initDiscordBot().catch(err => 
     console.error("[Discord] Error al inicializar bot:", err.message)
   );

@@ -52,11 +52,22 @@ function startServer() {
     let serverPath = path.join(__dirname, 'server.js');
     let workingDir = __dirname;
     
+    console.log('[Main] __dirname:', __dirname);
+    console.log('[Main] app.isPackaged:', app.isPackaged);
+    console.log('[Main] Initial serverPath:', serverPath);
+    
     // Si estamos en ASAR, usar la ruta desempaquetada
     if (serverPath.includes('app.asar')) {
       serverPath = serverPath.replace('app.asar', 'app.asar.unpacked');
       workingDir = workingDir.replace('app.asar', 'app.asar.unpacked');
+      console.log('[Main] ASAR detected, using unpacked paths');
+      console.log('[Main] serverPath:', serverPath);
+      console.log('[Main] workingDir:', workingDir);
     }
+    
+    console.log('[Main] Final serverPath:', serverPath);
+    console.log('[Main] Final workingDir:', workingDir);
+    console.log('[Main] USER_DATA_DIR:', USER_DATA_DIR);
     
     serverProcess = spawn('node', [serverPath], {
       cwd: workingDir,
