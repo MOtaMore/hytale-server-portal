@@ -27,9 +27,26 @@ const USER_DATA_DIR = process.env.USER_DATA_DIR || path.join(os.homedir(), IS_WI
 
 function getDocumentsDir() {
   if (process.env.DOCUMENTS_DIR) return process.env.DOCUMENTS_DIR;
-  if (IS_WINDOWS) return path.join(os.homedir(), "Documents");
 
-  // Intentar respetar XDG en Linux
+  if (IS_WINDOWS) {
+    const home = process.env.USERPROFILE || os.homedir();
+    const oneDriveEnv = [process.env.OneDrive, process.env.OneDriveCommercial, process.env.OneDriveConsumer].filter(Boolean);
+    const candidates = [
+      ...oneDriveEnv.map((d) => path.join(d, "Documents")),
+      path.join(home, "OneDrive", "Documents"),
+      path.join(home, "Documents")
+    ];
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate)) return candidate;
+      } catch {
+        // continue
+      }
+    }
+    return candidates[candidates.length - 1];
+  }
+
+  // Intentar respetar XDG en Linux/macOS
   const userDirsFile = path.join(os.homedir(), ".config", "user-dirs.dirs");
   try {
     const content = fs.readFileSync(userDirsFile, "utf-8");
@@ -2175,6 +2192,8 @@ const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
         downloaderPath: downloader ? resolved.path : null,
         downloaderSource: resolved.source,
         diagnostics: {
+          documentsDir: DOCUMENTS_DIR,
+          baseDir: BASE_DIR,
           userPath: userCandidate,
           userExists: fs.existsSync(userCandidate),
           resourcePath: resourceCandidate,

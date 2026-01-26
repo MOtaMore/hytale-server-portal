@@ -357,6 +357,12 @@ async function refreshSetup() {
     
     // Enable/disable download button based on downloader status and installation state
     downloadServerBtn.disabled = !data.exists || !data.isExecutable || data.isInstalled;
+
+    if (!data.exists) {
+      showDownloadMessage(`Downloader no encontrado en ${data.path || "(sin ruta)"}`, "error");
+    } else if (!data.isExecutable) {
+      showDownloadMessage(i18n.t("setup_not_executable"), "error");
+    }
     
     // Fetch authentication configuration and update status display
     const authData = await apiFetch("/api/auth/config");
