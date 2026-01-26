@@ -151,6 +151,63 @@ ipcMain.handle('app:quit', async () => {
   app.quit();
 });
 
+// Limpiar datos de AppData pero preservar el servidor
+ipcMain.handle('app:clean-app-data', async (event, options = {}) => {
+  try {
+    const userDataPath = app.getPath('userData');
+    const serverPath = path.join(userDataPath, 'HytaleServer');
+    
+    console.log(`[Cleanup] Iniciando limpieza de AppData: ${userDataPath}`);
+    
+    // Archivos y carpetas a eliminar (excepto HytaleServer si preserveServer es true)
+    const itemsToDelete = [
+      '.auth-secure',
+      'discord-config.json',
+      'setup-config.json',
+      'server-auth.json',
+      '.hytale-downloader-credentials.json',
+      '.download-status.json',
+      'logs'
+    ];
+    
+    // Eliminar archivos de configuración
+    for (const item of itemsToDelete) {
+      const itemPath = path.join(userDataPath, item);
+      if (fs.existsSync(itemPath)) {
+        if (fs.statSync(itemPath).isDirectory()) {
+          fs.rmSync(itemPath, { recursive: true, force: true });
+        } else {
+          fs.unlinkSync(itemPath);
+        }
+        console.log(`[Cleanup] Eliminado: ${item}`);
+      }
+    }
+    
+    // Opcionalmente eliminar backups
+    if (options.deleteBackups) {
+      const backupPath = path.join(userDataPath, 'backups');
+      if (fs.existsSync(backupPath)) {
+        fs.rmSync(backupPath, { recursive: true, force: true });
+        console.log(`[Cleanup] Backups eliminados`);
+      }
+    }
+    
+    // Opcionalmente eliminar el servidor
+    if (options.deleteServer && fs.existsSync(serverPath)) {
+      fs.rmSync(serverPath, { recursive: true, force: true });
+      console.log(`[Cleanup] Servidor eliminado: ${serverPath}`);
+    } else if (!options.deleteServer && fs.existsSync(serverPath)) {
+      console.log(`[Cleanup] Servidor preservado: ${serverPath}`);
+    }
+    
+    console.log('[Cleanup] Limpieza completada');
+    return { success: true, message: 'Datos eliminados exitosamente' };
+  } catch (error) {
+    console.error('[Cleanup] Error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Evento: App listo
 app.on('ready', async () => {
   try {

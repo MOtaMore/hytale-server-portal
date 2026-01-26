@@ -40,6 +40,10 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Hytale Server Portal
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+  include: assets/uninstaller.nsh
 
 # Linux DEB package
 linux:
