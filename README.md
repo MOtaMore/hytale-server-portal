@@ -3,8 +3,8 @@
 **A professional desktop application for managing and controlling Hytale game servers with an intuitive graphical interface.**
 
 ![License](https://img.shields.io/badge/license-Private-red)
-![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux%20%7C%20macOS-blue)
-![Version](https://img.shields.io/badge/version-1.0.0-green)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2F11%20%7C%20Linux-blue)
+![Version](https://img.shields.io/badge/version-1.2.0-green)
 ![Java](https://img.shields.io/badge/Java-25%2B-orange)
 
 ## 📋 Table of Contents
