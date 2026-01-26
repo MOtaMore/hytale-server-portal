@@ -32,7 +32,6 @@ win:
     - nsis
     - portable
   icon: assets/icon.png
-  certificateFile: null
 
 # NSIS installer for Windows
 nsis:
