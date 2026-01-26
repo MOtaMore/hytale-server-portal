@@ -32,6 +32,11 @@ win:
     - nsis
     - portable
   icon: assets/icon.png
+  signingHashAlgorithms:
+    - sha256
+  certificateFile: null
+  certificatePassword: null
+  signtoolOptions: []
 
 # NSIS installer for Windows
 nsis:
