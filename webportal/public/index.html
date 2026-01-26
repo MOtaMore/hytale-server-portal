@@ -19,35 +19,35 @@
           <h2 data-i18n="setup_select_language">Selecciona tu idioma</h2>
           <div class="language-selector">
             <button class="lang-btn" data-lang="es">
-              <img src="/assets/es.webp" alt="Español" class="flag-img">
+              <img src="./assets/es.webp" alt="Español" class="flag-img">
               <span>Español</span>
             </button>
             <button class="lang-btn" data-lang="en">
-              <img src="/assets/gb.webp" alt="English" class="flag-img">
+              <img src="./assets/gb.webp" alt="English" class="flag-img">
               <span>English</span>
             </button>
             <button class="lang-btn" data-lang="pt">
-              <img src="/assets/pt.webp" alt="Português" class="flag-img">
+              <img src="./assets/pt.webp" alt="Português" class="flag-img">
               <span>Português</span>
             </button>
             <button class="lang-btn" data-lang="fr">
-              <img src="/assets/fr.webp" alt="Français" class="flag-img">
+              <img src="./assets/fr.webp" alt="Français" class="flag-img">
               <span>Français</span>
             </button>
             <button class="lang-btn" data-lang="zh">
-              <img src="/assets/cn.webp" alt="中文" class="flag-img">
+              <img src="./assets/cn.webp" alt="中文" class="flag-img">
               <span>中文</span>
             </button>
             <button class="lang-btn" data-lang="jp">
-              <img src="/assets/jp.webp" alt="日本語" class="flag-img">
+              <img src="./assets/jp.webp" alt="日本語" class="flag-img">
               <span>日本語</span>
             </button>
             <button class="lang-btn" data-lang="kr">
-              <img src="/assets/kr.webp" alt="한국어" class="flag-img">
+              <img src="./assets/kr.webp" alt="한국어" class="flag-img">
               <span>한국어</span>
             </button>
             <button class="lang-btn" data-lang="de">
-              <img src="/assets/de.webp" alt="Deutsch" class="flag-img">
+              <img src="./assets/de.webp" alt="Deutsch" class="flag-img">
               <span>Deutsch</span>
             </button>
           </div>
@@ -92,6 +92,7 @@
           <button class="nav-item" data-view="backups" data-i18n="nav_backups">Backups</button>
           <button class="nav-item" data-view="config" data-i18n="nav_config">Config</button>
           <button class="nav-item" data-view="discord" data-i18n="nav_discord">Discord</button>
+          <button class="nav-item" data-view="uninstall" data-i18n="nav_uninstall">Desinstalar</button>
         </nav>
         <div class="auth-box" id="auth-box">
           <div class="auth-title" data-i18n="auth_title">Acceso</div>
@@ -406,6 +407,45 @@
                 <li data-i18n="discord_instruction_4">Haz clic derecho en el canal donde quieres los anuncios y copia su ID</li>
                 <li data-i18n="discord_instruction_5">Pega el ID del canal arriba y activa las notificaciones</li>
               </ol>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-uninstall">
+          <div class="header">
+            <h2 data-i18n="uninstall_title">Desinstalar</h2>
+          </div>
+          <div class="uninstall-config">
+            <div class="card danger-zone">
+              <h3 data-i18n="uninstall_warning_title">⚠️ Zona Peligrosa</h3>
+              <p data-i18n="uninstall_warning_description">
+                Esta acción eliminará la configuración de la aplicación. Puedes elegir si mantener o eliminar también los datos del servidor.
+              </p>
+              
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input id="uninstall-keep-server" type="checkbox" checked />
+                  <span data-i18n="uninstall_keep_server_data">Mantener datos del servidor</span>
+                </label>
+                <small data-i18n="uninstall_keep_server_help">
+                  Si esta opción está activada, solo se eliminará la configuración de la aplicación. Los archivos del servidor se conservarán.
+                </small>
+              </div>
+              
+              <div class="uninstall-info">
+                <h4 data-i18n="uninstall_what_will_be_deleted">Qué se eliminará:</h4>
+                <ul id="uninstall-items-list">
+                  <li data-i18n="uninstall_item_config">Configuración de la aplicación</li>
+                  <li data-i18n="uninstall_item_auth">Credenciales de autenticación</li>
+                  <li data-i18n="uninstall_item_discord">Configuración de Discord</li>
+                  <li id="uninstall-server-item" data-i18n="uninstall_item_server">Archivos del servidor (si no se marca la casilla)</li>
+                </ul>
+              </div>
+              
+              <div class="actions">
+                <button id="uninstall-btn" class="danger" data-i18n="uninstall_button">Desinstalar Aplicación</button>
+              </div>
+              <small id="uninstall-message"></small>
             </div>
           </div>
         </section>

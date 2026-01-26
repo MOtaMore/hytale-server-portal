@@ -203,5 +203,21 @@
   "discord_description_online": "El servidor Hytale se ha iniciado correctamente.",
   "discord_description_offline": "El servidor Hytale se ha detenido.",
   "discord_footer": "Panel de Administración Hytale",
-  "discord_channel_online": "estado-on"
+  "discord_channel_online": "estado-on",
+  
+  "nav_uninstall": "Desinstalar",
+  "uninstall_title": "Desinstalar Aplicación",
+  "uninstall_warning_title": "⚠️ Zona Peligrosa",
+  "uninstall_warning_description": "Esta acción eliminará la configuración de la aplicación. Puedes elegir si mantener o eliminar también los datos del servidor.",
+  "uninstall_keep_server_data": "Mantener datos del servidor",
+  "uninstall_keep_server_help": "Si esta opción está activada, solo se eliminará la configuración de la aplicación. Los archivos del servidor se conservarán.",
+  "uninstall_what_will_be_deleted": "Qué se eliminará:",
+  "uninstall_item_config": "Configuración de la aplicación",
+  "uninstall_item_auth": "Credenciales de autenticación",
+  "uninstall_item_discord": "Configuración de Discord",
+  "uninstall_item_server": "Archivos del servidor (si no se marca la casilla)",
+  "uninstall_button": "Desinstalar Aplicación",
+  "uninstall_success": "Aplicación desinstalada. La ventana se cerrará automáticamente.",
+  "uninstall_confirm": "¿Estás seguro de que deseas desinstalar la aplicación? Esta acción no se puede deshacer.",
+  "uninstall_error": "Error al desinstalar: {error}"
 }

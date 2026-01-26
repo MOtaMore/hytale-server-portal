@@ -61,14 +61,19 @@ function getDownloaderPath() {
     ? "hytale-downloader-windows-amd64.exe"
     : "hytale-downloader-linux-amd64";
 
-  // Prioridad 1: RESOURCE_BASE_DIR (archivos empaquetados con la app)
+  // Prioridad 1: BASE_DIR (ya copiado durante inicialización)
+  const userPath = path.join(BASE_DIR, downloaderFileName);
+  if (fs.existsSync(userPath)) {
+    return userPath;
+  }
+
+  // Prioridad 2: RESOURCE_BASE_DIR (archivos empaquetados con la app)
   const resourcePath = path.join(RESOURCE_BASE_DIR, downloaderFileName);
   if (fs.existsSync(resourcePath)) {
     return resourcePath;
   }
 
-  // Prioridad 2: BASE_DIR (descarga manual)
-  const userPath = path.join(BASE_DIR, downloaderFileName);
+  // Fallback: retornar la ruta esperada en BASE_DIR aunque no exista
   return userPath;
 }
 
@@ -158,14 +163,15 @@ async function ensureBaseDir() {
     console.log("[Init] USER_DATA_DIR:", USER_DATA_DIR);
     console.log("[Init] RESOURCE_BASE_DIR:", RESOURCE_BASE_DIR);
     console.log("[Init] BASE_DIR:", BASE_DIR);
-    console.log("[Init] DOWNLOADER_PATH:", DOWNLOADER_PATH);
-    console.log("[Init] Downloader existe:", fs.existsSync(DOWNLOADER_PATH) ? "✓ SÍ" : "✗ NO");
     
     await fsp.mkdir(BASE_DIR, { recursive: true });
 
     const marker = path.join(BASE_DIR, ".initialized");
     if (fs.existsSync(marker)) {
       console.log("[Init] Ya inicializado previamente");
+      // Verificar si el downloader existe después de inicialización
+      console.log("[Init] DOWNLOADER_PATH:", DOWNLOADER_PATH);
+      console.log("[Init] Downloader existe:", fs.existsSync(DOWNLOADER_PATH) ? "✓ SÍ" : "✗ NO");
       return;
     }
 
@@ -173,11 +179,30 @@ async function ensureBaseDir() {
     console.log("[Init] Verificando recursos en:", RESOURCE_BASE_DIR);
     if (fs.existsSync(RESOURCE_BASE_DIR)) {
       console.log("[Init] Copiando recursos desde:", RESOURCE_BASE_DIR);
-      await fsp.cp(RESOURCE_BASE_DIR, BASE_DIR, {
-        recursive: true,
-        force: false,
-        errorOnExist: false
-      });
+      
+      // Copiar archivos específicos del sistema operativo
+      const filesToCopy = IS_WINDOWS
+        ? ["hytale-downloader-windows-amd64.exe", "start-server.bat", "stop-server.bat"]
+        : ["hytale-downloader-linux-amd64", "start-server.sh", "stop-server.sh"];
+      
+      for (const file of filesToCopy) {
+        const sourcePath = path.join(RESOURCE_BASE_DIR, file);
+        const destPath = path.join(BASE_DIR, file);
+        
+        if (fs.existsSync(sourcePath)) {
+          console.log(`[Init] Copiando ${file}...`);
+          await fsp.copyFile(sourcePath, destPath);
+          
+          // Dar permisos de ejecución en sistemas Unix
+          if (!IS_WINDOWS && (file.includes("downloader") || file.endsWith(".sh"))) {
+            await fsp.chmod(destPath, 0o755);
+          }
+          console.log(`[Init] ✓ ${file} copiado`);
+        } else {
+          console.warn(`[Init] ⚠ Advertencia: ${file} no encontrado en ${RESOURCE_BASE_DIR}`);
+        }
+      }
+      
       console.log("[Init] Recursos copiados correctamente");
     } else {
       console.warn("[Init] ADVERTENCIA: Directorio de recursos no encontrado en:", RESOURCE_BASE_DIR);
@@ -185,6 +210,8 @@ async function ensureBaseDir() {
 
     await fsp.writeFile(marker, "ok", "utf-8");
     console.log("[Init] Directorio base inicializado correctamente");
+    console.log("[Init] DOWNLOADER_PATH:", DOWNLOADER_PATH);
+    console.log("[Init] Downloader existe:", fs.existsSync(DOWNLOADER_PATH) ? "✓ SÍ" : "✗ NO");
   } catch (error) {
     console.error("[Init] Error preparando directorio base:", error.message);
     console.error("[Init] Stack:", error.stack);
@@ -2218,6 +2245,72 @@ app.post("/api/auth/config", async (req, res) => {
     await authService.saveServerAuthConfig(config);
     res.json({ success: true, config });
   } catch (error) {
+    res.status(500).json({ error: formatError(error) });
+  }
+});
+
+// ============ UNINSTALLER ENDPOINT ============
+app.post("/api/uninstall", async (req, res) => {
+  try {
+    const { keepServerData } = req.body;
+    
+    console.log("[Uninstall] Starting uninstall process...");
+    console.log("[Uninstall] Keep server data:", keepServerData);
+    
+    // Lista de archivos y carpetas a eliminar
+    const itemsToDelete = [];
+    
+    // Siempre eliminar configuración de la aplicación
+    if (fs.existsSync(AUTH_CONFIG_PATH)) {
+      itemsToDelete.push(AUTH_CONFIG_PATH);
+    }
+    if (fs.existsSync(SERVER_AUTH_CONFIG_PATH)) {
+      itemsToDelete.push(SERVER_AUTH_CONFIG_PATH);
+    }
+    if (fs.existsSync(DISCORD_CONFIG_PATH)) {
+      itemsToDelete.push(DISCORD_CONFIG_PATH);
+    }
+    if (fs.existsSync(SETUP_CONFIG_PATH)) {
+      itemsToDelete.push(SETUP_CONFIG_PATH);
+    }
+    
+    // Si no se mantienen los datos del servidor, eliminar también BASE_DIR
+    if (!keepServerData && fs.existsSync(BASE_DIR)) {
+      itemsToDelete.push(BASE_DIR);
+    }
+    
+    // Eliminar archivos y carpetas
+    for (const item of itemsToDelete) {
+      try {
+        const stats = await fsp.stat(item);
+        if (stats.isDirectory()) {
+          await fsp.rm(item, { recursive: true, force: true });
+          console.log(`[Uninstall] Deleted directory: ${item}`);
+        } else {
+          await fsp.unlink(item);
+          console.log(`[Uninstall] Deleted file: ${item}`);
+        }
+      } catch (err) {
+        console.error(`[Uninstall] Error deleting ${item}:`, err.message);
+      }
+    }
+    
+    console.log("[Uninstall] Uninstall completed successfully");
+    
+    res.json({
+      success: true,
+      message: "Application uninstalled successfully",
+      deletedItems: itemsToDelete.length,
+      keptServerData: keepServerData
+    });
+    
+    // Cerrar la aplicación después de 2 segundos
+    setTimeout(() => {
+      console.log("[Uninstall] Closing application...");
+      process.exit(0);
+    }, 2000);
+  } catch (error) {
+    console.error("[Uninstall] Error during uninstall:", error);
     res.status(500).json({ error: formatError(error) });
   }
 });

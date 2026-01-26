@@ -203,5 +203,21 @@
   "discord_description_online": "Hytale 服务器已成功启动。",
   "discord_description_offline": "Hytale 服务器已停止。",
   "discord_footer": "Hytale 管理面板",
-  "discord_channel_online": "status-on"
+  "discord_channel_online": "status-on",
+  
+  "nav_uninstall": "卸载",
+  "uninstall_title": "卸载应用程序",
+  "uninstall_warning_title": "⚠️ 危险区域",
+  "uninstall_warning_description": "此操作将删除应用程序配置。您可以选择是否保留或删除服务器数据。",
+  "uninstall_keep_server_data": "保留服务器数据",
+  "uninstall_keep_server_help": "如果启用此选项，将仅删除应用程序配置。服务器文件将被保留。",
+  "uninstall_what_will_be_deleted": "将删除的内容：",
+  "uninstall_item_config": "应用程序配置",
+  "uninstall_item_auth": "身份验证凭据",
+  "uninstall_item_discord": "Discord 配置",
+  "uninstall_item_server": "服务器文件（如果未勾选复选框）",
+  "uninstall_button": "卸载应用程序",
+  "uninstall_success": "应用程序已卸载。窗口将自动关闭。",
+  "uninstall_confirm": "您确定要卸载应用程序吗？此操作无法撤消。",
+  "uninstall_error": "卸载错误：{error}"
 }

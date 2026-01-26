@@ -203,5 +203,21 @@
   "discord_description_online": "Hytaleサーバーが正常に起動しました。",
   "discord_description_offline": "Hytaleサーバーが停止しました。",
   "discord_footer": "Hytale管理パネル",
-  "discord_channel_online": "ステータス-オン"
+  "discord_channel_online": "ステータス-オン",
+  
+  "nav_uninstall": "アンインストール",
+  "uninstall_title": "アプリケーションのアンインストール",
+  "uninstall_warning_title": "⚠️ 危険ゾーン",
+  "uninstall_warning_description": "このアクションはアプリケーションの設定を削除します。サーバーデータを保持するか削除するかを選択できます。",
+  "uninstall_keep_server_data": "サーバーデータを保持",
+  "uninstall_keep_server_help": "このオプションが有効な場合、アプリケーションの設定のみが削除されます。サーバーファイルは保存されます。",
+  "uninstall_what_will_be_deleted": "削除される内容：",
+  "uninstall_item_config": "アプリケーション設定",
+  "uninstall_item_auth": "認証資格情報",
+  "uninstall_item_discord": "Discord設定",
+  "uninstall_item_server": "サーバーファイル（チェックボックスがマークされていない場合）",
+  "uninstall_button": "アプリケーションをアンインストール",
+  "uninstall_success": "アプリケーションがアンインストールされました。ウィンドウは自動的に閉じます。",
+  "uninstall_confirm": "アプリケーションをアンインストールしてもよろしいですか？このアクションは元に戻せません。",
+  "uninstall_error": "アンインストールエラー：{error}"
 }
