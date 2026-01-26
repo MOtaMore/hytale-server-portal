@@ -980,6 +980,9 @@ button.secondary:disabled {
   font-size: 12px;
   width: 100%;
   box-sizing: border-box;
+  overflow-x: auto;
+  white-space: nowrap;
+  cursor: text;
 }
 
 .message {

@@ -77,6 +77,12 @@ function getDownloaderPath() {
   return userPath;
 }
 
+// NOTA: No usar const aquí, getDownloaderPath() debe llamarse dinámicamente
+// para que detecte el archivo después de que ensureBaseDir() lo copie
+function getDownloaderPathDynamic() {
+  return getDownloaderPath();
+}
+
 const DOWNLOADER_PATH = getDownloaderPath();
 const AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, ".auth-secure");
 const SERVER_AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, "server-auth.json");
@@ -170,8 +176,9 @@ async function ensureBaseDir() {
     if (fs.existsSync(marker)) {
       console.log("[Init] Ya inicializado previamente");
       // Verificar si el downloader existe después de inicialización
-      console.log("[Init] DOWNLOADER_PATH:", DOWNLOADER_PATH);
-      console.log("[Init] Downloader existe:", fs.existsSync(DOWNLOADER_PATH) ? "✓ SÍ" : "✗ NO");
+      const downloaderPath = getDownloaderPath();
+      console.log("[Init] DOWNLOADER_PATH:", downloaderPath);
+      console.log("[Init] Downloader existe:", fs.existsSync(downloaderPath) ? "✓ SÍ" : "✗ NO");
       return;
     }
 
@@ -210,8 +217,9 @@ async function ensureBaseDir() {
 
     await fsp.writeFile(marker, "ok", "utf-8");
     console.log("[Init] Directorio base inicializado correctamente");
-    console.log("[Init] DOWNLOADER_PATH:", DOWNLOADER_PATH);
-    console.log("[Init] Downloader existe:", fs.existsSync(DOWNLOADER_PATH) ? "✓ SÍ" : "✗ NO");
+    const downloaderPath = getDownloaderPath();
+    console.log("[Init] DOWNLOADER_PATH:", downloaderPath);
+    console.log("[Init] Downloader existe:", fs.existsSync(downloaderPath) ? "✓ SÍ" : "✗ NO");
   } catch (error) {
     console.error("[Init] Error preparando directorio base:", error.message);
     console.error("[Init] Stack:", error.stack);
@@ -285,7 +293,8 @@ let serverLogStream = null;
 
 async function downloaderExists() {
   try {
-    await fsp.access(DOWNLOADER_PATH, fs.constants.X_OK);
+    const downloaderPath = getDownloaderPath();
+    await fsp.access(downloaderPath, fs.constants.X_OK);
     return true;
   } catch {
     return false;
@@ -1287,20 +1296,21 @@ class DownloaderService {
   }
 
   async status() {
-    const exists = fs.existsSync(DOWNLOADER_PATH);
+    const downloaderPath = getDownloaderPath();
+    const exists = fs.existsSync(downloaderPath);
     let isExecutable = false;
     let version = null;
     let gameVersion = null;
     let lastDownload = null;
 
     if (exists) {
-      const stats = await fsp.stat(DOWNLOADER_PATH);
+      const stats = await fsp.stat(downloaderPath);
       isExecutable = !!(stats.mode & fs.constants.X_OK);
 
       if (isExecutable) {
         try {
           const versionOutput = await new Promise((resolve, reject) => {
-            exec(`"${DOWNLOADER_PATH}" -version`, { cwd: BASE_DIR }, (err, stdout) => {
+            exec(`"${downloaderPath}" -version`, { cwd: BASE_DIR }, (err, stdout) => {
               if (err) reject(err);
               else resolve(stdout.trim());
             });
@@ -1308,7 +1318,7 @@ class DownloaderService {
           version = versionOutput;
 
           const gameVersionOutput = await new Promise((resolve, reject) => {
-            exec(`"${DOWNLOADER_PATH}" -print-version`, { cwd: BASE_DIR, timeout: 10000 }, (err, stdout) => {
+            exec(`"${downloaderPath}" -print-version`, { cwd: BASE_DIR, timeout: 10000 }, (err, stdout) => {
               if (err) reject(err);
               else resolve(stdout.trim());
             });
@@ -1353,22 +1363,23 @@ class DownloaderService {
       isInstalled,
       isAuthenticated,
       lastDownload,
-      path: DOWNLOADER_PATH
+      path: downloaderPath
     };
   }
 
   async download() {
-    const downloaderExists = fs.existsSync(DOWNLOADER_PATH);
+    const downloaderPath = getDownloaderPath();
+    const downloaderExists = fs.existsSync(downloaderPath);
     if (!downloaderExists) {
       throw new Error("El descargador de Hytale no existe en la ruta especificada");
     }
 
-    const stats = await fsp.stat(DOWNLOADER_PATH);
+    const stats = await fsp.stat(downloaderPath);
     if (!(stats.mode & fs.constants.X_OK)) {
-      await fsp.chmod(DOWNLOADER_PATH, 0o755);
+      await fsp.chmod(downloaderPath, 0o755);
     }
 
-    exec(`"${DOWNLOADER_PATH}"`, { cwd: BASE_DIR }, async (err, stdout, stderr) => {
+    exec(`"${downloaderPath}"`, { cwd: BASE_DIR }, async (err, stdout, stderr) => {
       if (err) {
         console.error("[Downloader] Error:", stderr || err.message);
       } else {
@@ -1408,13 +1419,14 @@ class DownloaderService {
   }
 
   startAuthFlow() {
-    const exists = fs.existsSync(DOWNLOADER_PATH);
+    const downloaderPath = getDownloaderPath();
+    const exists = fs.existsSync(downloaderPath);
     if (!exists) {
       throw new Error("El descargador de Hytale no existe en la ruta especificada");
     }
 
     const session = this.createAuthSession();
-    const child = spawn(DOWNLOADER_PATH, [], { cwd: BASE_DIR });
+    const child = spawn(downloaderPath, [], { cwd: BASE_DIR });
     session.child = child;
     session.status = "waiting";
 
