@@ -56,6 +56,7 @@ const DOWNLOADER_PATH = IS_WINDOWS
   ? path.join(BASE_DIR, "hytale-downloader-windows-amd64.exe")
   : path.join(BASE_DIR, "hytale-downloader-linux-amd64");
 const AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, ".auth-secure");
+const SERVER_AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, "server-auth.json");
 const DOWNLOAD_STATUS_PATH = path.join(BASE_DIR, ".download-status.json");
 const SETUP_CONFIG_PATH = path.join(USER_DATA_DIR, "setup-config.json");
 const DOWNLOADER_AUTH_SESSIONS = new Map();
@@ -130,8 +131,6 @@ const HIDDEN_FILES = new Set([
   "start-server.sh",
   "stop-server.sh"
 ]);
-const tokens = new Map();
-
 // Directorio de datos del usuario (escribible)
 fs.mkdirSync(USER_DATA_DIR, { recursive: true });
 
@@ -246,9 +245,7 @@ async function downloaderExists() {
   }
 }
 
-// Cliente de Discord
-let discordClient = null;
-let discordReady = false;
+// Removed: Discord client variables now managed by DiscordService
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -740,6 +737,762 @@ function stripAnsi(text) {
   return text.replace(/\x1B\[[0-9;]*[ -\/]*[@-~]/g, "");
 }
 
+// ==================== SERVICE LAYER (OOP) ====================
+// Lightweight service classes to isolate responsibilities and reduce
+// the amount of ad-hoc logic inside the route handlers.
+
+class AuthService {
+  constructor({ authConfigPath, setupConfigPath, tokenTtlMs }) {
+    this.authConfigPath = authConfigPath;
+    this.setupConfigPath = setupConfigPath;
+    this.tokenTtlMs = tokenTtlMs;
+    this.tokens = new Map();
+  }
+
+  cleanupTokens() {
+    const now = Date.now();
+    for (const [token, meta] of this.tokens.entries()) {
+      if (now - meta.createdAt > this.tokenTtlMs) {
+        this.tokens.delete(token);
+      }
+    }
+  }
+
+  async loadPanelCredentials() {
+    let expectedUser = "admin";
+    let expectedPass = "admin";
+
+    try {
+      if (fs.existsSync(this.authConfigPath)) {
+        const authConfig = JSON.parse(await fsp.readFile(this.authConfigPath, "utf8"));
+        expectedUser = authConfig.username || expectedUser;
+
+        if (authConfig.encrypted && authConfig.password) {
+          try {
+            expectedPass = decryptPassword(authConfig.password);
+          } catch (error) {
+            console.error("[Auth] Failed to decrypt password:", error.message);
+            expectedPass = authConfig.password;
+          }
+        } else {
+          expectedPass = authConfig.password || expectedPass;
+        }
+      }
+    } catch (error) {
+      console.error("[Auth] Loading auth config:", error.message);
+    }
+
+    expectedUser = process.env.PANEL_USER || expectedUser;
+    expectedPass = process.env.PANEL_PASS || expectedPass;
+
+    return { expectedUser, expectedPass };
+  }
+
+  async login(username, password) {
+    const { expectedUser, expectedPass } = await this.loadPanelCredentials();
+    const receivedUser = (username || "").trim();
+    const receivedPass = (password || "").trim();
+
+    if (receivedUser !== expectedUser || receivedPass !== expectedPass) {
+      throw new Error("Credenciales inválidas");
+    }
+
+    const token = crypto.randomBytes(24).toString("hex");
+    this.tokens.set(token, { createdAt: Date.now() });
+
+    return { token, expiresInMs: this.tokenTtlMs };
+  }
+
+  middleware = (req, res, next) => {
+    if (!req.path.startsWith("/api")) {
+      return next();
+    }
+    if (req.path === "/api/login" || req.path.startsWith("/api/setup")) {
+      return next();
+    }
+
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+    this.cleanupTokens();
+
+    if (!token || !this.tokens.has(token)) {
+      res.status(401).json({ error: "No autorizado" });
+      return;
+    }
+
+    next();
+  };
+
+  async completeSetup({ username, password, language }) {
+    if (!username || !password || !language) {
+      throw new Error("Faltan datos requeridos");
+    }
+
+    if (password.length < 4) {
+      throw new Error("La contraseña debe tener al menos 4 caracteres");
+    }
+
+    const setupConfig = {
+      setupCompleted: true,
+      language,
+      completedAt: new Date().toISOString()
+    };
+
+    await fsp.writeFile(this.setupConfigPath, JSON.stringify(setupConfig, null, 2));
+
+    const encryptedPassword = encryptPassword(password.trim());
+    const authConfig = {
+      username: username.trim(),
+      password: encryptedPassword,
+      encrypted: true,
+      encryptedAt: new Date().toISOString()
+    };
+
+    await fsp.writeFile(this.authConfigPath, JSON.stringify(authConfig, null, 2));
+
+    process.env.PANEL_USER = username.trim();
+    process.env.PANEL_PASS = password.trim();
+  }
+
+  async getSetupStatus() {
+    try {
+      if (fs.existsSync(this.setupConfigPath)) {
+        const setupConfig = JSON.parse(await fsp.readFile(this.setupConfigPath, "utf8"));
+        return {
+          setupCompleted: true,
+          language: setupConfig.language
+        };
+      }
+    } catch (error) {
+      console.error("[Setup] Error reading setup config:", error.message);
+    }
+    return { setupCompleted: false };
+  }
+
+  async getServerAuthConfig() {
+    try {
+      if (fs.existsSync(SERVER_AUTH_CONFIG_PATH)) {
+        const content = await fsp.readFile(SERVER_AUTH_CONFIG_PATH, "utf-8");
+        return JSON.parse(content);
+      }
+    } catch (error) {
+      console.error("[ServerAuth] Error reading config:", error.message);
+    }
+    return { authMode: "authenticated", deviceCode: null, authenticated: false };
+  }
+
+  async saveServerAuthConfig(config) {
+    await fsp.writeFile(SERVER_AUTH_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+  }
+}
+
+class ServerService {
+  constructor({ baseDir, startScript, stopScript, screenName }) {
+    this.baseDir = baseDir;
+    this.startScript = startScript;
+    this.stopScript = stopScript;
+    this.screenName = screenName;
+  }
+
+  async start() {
+    if (IS_WINDOWS) {
+      await startServerProcessNode();
+      return "Server started (Windows)";
+    }
+    return runScript(this.startScript);
+  }
+
+  async stop() {
+    if (IS_WINDOWS) {
+      await stopServerProcessNode();
+      return "Server stopped (Windows)";
+    }
+    return runScript(this.stopScript);
+  }
+
+  async getStatus() {
+    return getScreenStatus();
+  }
+
+  async sendCommand(command) {
+    if (!command || typeof command !== "string") {
+      throw new Error("Comando inválido");
+    }
+
+    const status = await getScreenStatus();
+    if (!status.running) {
+      throw new Error("El servidor no está en ejecución");
+    }
+
+    if (IS_WINDOWS) {
+      if (!serverProcess || serverProcessExited || !serverProcess.stdin) {
+        throw new Error("No se puede enviar comando: proceso no disponible");
+      }
+      serverProcess.stdin.write(`${command}\n`);
+      return;
+    }
+
+    await new Promise((resolve, reject) => {
+      execFile(
+        "screen",
+        ["-S", this.screenName, "-X", "stuff", `${command}\n`],
+        (err, stdout, stderr) => {
+          if (err) {
+            reject(new Error(stderr || stdout || err.message));
+            return;
+          }
+          resolve();
+        }
+      );
+    });
+  }
+
+  async readLogs(lines = 100) {
+    const logFile = path.join(this.baseDir, "server.log");
+    if (!fs.existsSync(logFile)) return "";
+    const content = await fsp.readFile(logFile, "utf-8");
+    const allLines = content.split("\n").map(stripAnsi);
+    return allLines.slice(-lines).join("\n");
+  }
+
+  async getMetrics() {
+    const { xmx, jarName } = await readStartConfig();
+    const processUsage = await getServerProcessUsage(jarName);
+    const disk = await checkDiskSpace(this.baseDir);
+    const folderSize = await getFolderSizeBytes(this.baseDir);
+
+    return {
+      server: {
+        pid: processUsage?.pid || null,
+        cpu: processUsage?.cpu || 0,
+        memoryBytes: processUsage?.memory || 0,
+        maxMemoryBytes: xmx
+      },
+      storage: {
+        folderBytes: folderSize,
+        diskTotalBytes: disk.total,
+        diskFreeBytes: disk.free
+      }
+    };
+  }
+
+  async getServerConfig() {
+    return readServerConfig();
+  }
+
+  async saveServerConfig({ threads, ramMin, ramMax }) {
+    if (!threads || !ramMin || !ramMax) {
+      throw new Error("Faltan parámetros requeridos");
+    }
+    if (threads < 1 || threads > 32) {
+      throw new Error("Los hilos deben estar entre 1 y 32");
+    }
+    if (ramMin >= ramMax) {
+      throw new Error("La RAM mínima debe ser menor que la máxima");
+    }
+    if (ramMin < 512) {
+      throw new Error("La RAM mínima debe ser al menos 512 MB");
+    }
+
+    const config = { threads, ramMin, ramMax };
+    await fsp.writeFile(SERVER_CONFIG_PATH, JSON.stringify(config, null, 2));
+    return config;
+  }
+}
+
+class FileService {
+  async list(relPath) {
+    rejectHiddenPath(relPath || ".");
+    const target = resolveSafe(relPath || ".");
+    const entries = await fsp.readdir(target, { withFileTypes: true });
+    const items = [];
+    for (const entry of entries) {
+      if (isHiddenFile(entry.name)) continue;
+      const full = path.join(target, entry.name);
+      const stat = await fsp.stat(full);
+      items.push({
+        name: entry.name,
+        type: entry.isDirectory() ? "dir" : "file",
+        size: stat.size,
+        mtime: stat.mtimeMs
+      });
+    }
+    return { path: relPath || ".", items };
+  }
+
+  async remove(relPath) {
+    if (!relPath) throw new Error("Ruta requerida");
+    rejectHiddenPath(relPath);
+    const target = resolveSafe(relPath);
+    if (isHiddenFile(target)) throw new Error("Archivo no permitido");
+    await fsp.rm(target, { recursive: true, force: true });
+  }
+
+  async readContent(relPath) {
+    if (!relPath) throw new Error("Ruta requerida");
+    rejectHiddenPath(relPath);
+    const target = resolveSafe(relPath);
+    if (isHiddenFile(target)) throw new Error("Archivo no permitido");
+    return fsp.readFile(target, "utf-8");
+  }
+
+  async writeContent(relPath, content) {
+    if (!relPath) throw new Error("Ruta requerida");
+    if (typeof content !== "string") throw new Error("Contenido inválido");
+    rejectHiddenPath(relPath);
+    const target = resolveSafe(relPath);
+    if (isHiddenFile(target)) throw new Error("Archivo no permitido");
+    await fsp.writeFile(target, content, "utf-8");
+  }
+
+  async unzip(relPath) {
+    if (!relPath) throw new Error("Ruta requerida");
+    rejectHiddenPath(relPath);
+    const zipPath = resolveSafe(relPath);
+    if (isHiddenFile(zipPath)) throw new Error("Archivo no permitido");
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(path.dirname(zipPath), true);
+  }
+}
+
+class BackupService {
+  async status() {
+    const { dir } = await resolveBackupDirectory();
+    return { available: true, path: dir, backupDir: dir };
+  }
+
+  async createBackup() {
+    const { dir: backupDir } = await resolveBackupDirectory();
+    await fsp.mkdir(backupDir, { recursive: true });
+    const backupName = `HytaleServer-${formatDateForBackup()}`;
+    const backupPath = path.join(backupDir, `${backupName}.zip`);
+    const zip = new AdmZip();
+    await addDirToZipExcludeHidden(zip, BASE_DIR);
+    zip.writeZip(backupPath);
+    return { backupName, backupPath };
+  }
+
+  async listBackups() {
+    const { dir: backupDir } = await resolveBackupDirectory();
+    try {
+      const files = await fsp.readdir(backupDir);
+      const backups = [];
+      for (const file of files) {
+        if (file.endsWith(".zip")) {
+          const fullPath = path.join(backupDir, file);
+          const stat = await fsp.stat(fullPath);
+          backups.push({
+            name: file.replace(".zip", ""),
+            size: stat.size,
+            mtime: stat.mtimeMs,
+            file
+          });
+        }
+      }
+      backups.sort((a, b) => b.mtime - a.mtime);
+      return { available: true, backups };
+    } catch (error) {
+      console.error("[Backup] listBackups error:", error.message);
+      return { available: true, backups: [] };
+    }
+  }
+
+  async deleteBackup(file) {
+    const { dir: backupDir } = await resolveBackupDirectory();
+    if (!file.endsWith(".zip") || file.includes("..") || file.includes("/")) {
+      throw new Error("Nombre de archivo inválido");
+    }
+    const backupPath = path.join(backupDir, file);
+    if (!backupPath.startsWith(backupDir + path.sep)) {
+      throw new Error("Ruta inválida");
+    }
+    await fsp.unlink(backupPath);
+  }
+
+  async restoreBackup(file) {
+    const { dir: backupDir } = await resolveBackupDirectory();
+    if (!file.endsWith(".zip") || file.includes("..") || file.includes("/")) {
+      throw new Error("Nombre de archivo inválido");
+    }
+    const backupPath = path.join(backupDir, file);
+    if (!backupPath.startsWith(backupDir + path.sep)) {
+      throw new Error("Ruta inválida");
+    }
+    if (!fs.existsSync(backupPath)) {
+      throw new Error("Backup no encontrado");
+    }
+
+    const tempKeepDir = path.join(BASE_DIR, ".temp_keep_backup");
+    await fsp.mkdir(tempKeepDir, { recursive: true });
+    const keepNames = [
+      "hytale-downloader-linux-amd64",
+      "hytale-downloader-windows-amd64.exe",
+      ".hytale-downloader-credentials.json"
+    ];
+
+    const keepFiles = (await fsp.readdir(BASE_DIR))
+      .filter((f) => f.endsWith(".sh") || keepNames.includes(f))
+      .map((f) => path.join(BASE_DIR, f));
+
+    for (const keepFile of keepFiles) {
+      const fileName = path.basename(keepFile);
+      await fsp.copyFile(keepFile, path.join(tempKeepDir, fileName)).catch(() => {});
+    }
+
+    await fsp.rm(BASE_DIR, { recursive: true, force: true });
+    await fsp.mkdir(BASE_DIR, { recursive: true });
+
+    const zip = new AdmZip(backupPath);
+    zip.extractAllTo(BASE_DIR, true);
+
+    const restoredKeeps = await fsp.readdir(tempKeepDir).catch(() => []);
+    for (const fileName of restoredKeeps) {
+      const from = path.join(tempKeepDir, fileName);
+      const to = path.join(BASE_DIR, fileName);
+      await fsp.copyFile(from, to).catch(() => {});
+    }
+
+    await fsp.rm(tempKeepDir, { recursive: true, force: true }).catch(() => {});
+    return backupPath;
+  }
+
+  async getBackupConfig() {
+    const { dir } = await resolveBackupDirectory();
+    return { backupLocation: dir, enabled: true };
+  }
+
+  async saveBackupConfig(backupLocation) {
+    if (!backupLocation) {
+      throw new Error("Backup location is required");
+    }
+
+    const absolutePath = path.resolve(backupLocation);
+    if (!fs.existsSync(absolutePath)) {
+      fs.mkdirSync(absolutePath, { recursive: true });
+    }
+
+    try {
+      fs.accessSync(absolutePath, fs.constants.W_OK);
+    } catch {
+      throw new Error("No tiene permisos de escritura en esta ubicación");
+    }
+
+    const config = {
+      backupLocation: absolutePath,
+      enabled: true,
+      updatedAt: new Date().toISOString()
+    };
+
+    await fsp.writeFile(BACKUP_CONFIG_PATH, JSON.stringify(config, null, 2));
+    return config;
+  }
+}
+
+class DownloaderService {
+  constructor() {
+    this.sessions = DOWNLOADER_AUTH_SESSIONS;
+  }
+
+  async status() {
+    const exists = fs.existsSync(DOWNLOADER_PATH);
+    let isExecutable = false;
+    let version = null;
+    let gameVersion = null;
+    let lastDownload = null;
+
+    if (exists) {
+      const stats = await fsp.stat(DOWNLOADER_PATH);
+      isExecutable = !!(stats.mode & fs.constants.X_OK);
+
+      if (isExecutable) {
+        try {
+          const versionOutput = await new Promise((resolve, reject) => {
+            exec(`"${DOWNLOADER_PATH}" -version`, { cwd: BASE_DIR }, (err, stdout) => {
+              if (err) reject(err);
+              else resolve(stdout.trim());
+            });
+          });
+          version = versionOutput;
+
+          const gameVersionOutput = await new Promise((resolve, reject) => {
+            exec(`"${DOWNLOADER_PATH}" -print-version`, { cwd: BASE_DIR, timeout: 10000 }, (err, stdout) => {
+              if (err) reject(err);
+              else resolve(stdout.trim());
+            });
+          });
+          gameVersion = gameVersionOutput;
+        } catch (e) {
+          console.error("[Downloader] Error obteniendo versión:", e.message);
+        }
+      }
+    }
+
+    const serverJarExists = fs.existsSync(path.join(BASE_DIR, "HytaleServer.jar"));
+    const assetsExists = fs.existsSync(path.join(BASE_DIR, "Assets.zip"));
+    const isInstalled = serverJarExists && assetsExists;
+
+    const credentialsPath = path.join(BASE_DIR, ".hytale-downloader-credentials.json");
+    let isAuthenticated = false;
+    try {
+      if (fs.existsSync(credentialsPath)) {
+        const credContent = await fsp.readFile(credentialsPath, "utf-8");
+        const credentials = JSON.parse(credContent);
+        isAuthenticated = !!credentials && Object.keys(credentials).length > 0;
+      }
+    } catch (e) {
+      isAuthenticated = false;
+    }
+
+    if (fs.existsSync(DOWNLOAD_STATUS_PATH)) {
+      try {
+        const content = await fsp.readFile(DOWNLOAD_STATUS_PATH, "utf-8");
+        lastDownload = JSON.parse(content);
+      } catch {
+        lastDownload = null;
+      }
+    }
+
+    return {
+      exists,
+      isExecutable,
+      version,
+      gameVersion,
+      isInstalled,
+      isAuthenticated,
+      lastDownload,
+      path: DOWNLOADER_PATH
+    };
+  }
+
+  async download() {
+    const downloaderExists = fs.existsSync(DOWNLOADER_PATH);
+    if (!downloaderExists) {
+      throw new Error("El descargador de Hytale no existe en la ruta especificada");
+    }
+
+    const stats = await fsp.stat(DOWNLOADER_PATH);
+    if (!(stats.mode & fs.constants.X_OK)) {
+      await fsp.chmod(DOWNLOADER_PATH, 0o755);
+    }
+
+    exec(`"${DOWNLOADER_PATH}"`, { cwd: BASE_DIR }, async (err, stdout, stderr) => {
+      if (err) {
+        console.error("[Downloader] Error:", stderr || err.message);
+      } else {
+        console.log("[Downloader] Completado:", stdout);
+        const zip = await findDownloadedZip();
+        if (zip) {
+          console.log(`[Downloader] ZIP encontrado: ${zip}`);
+          await unzipAndCleanup(zip);
+        }
+      }
+    });
+  }
+
+  createAuthSession() {
+    const id = crypto.randomBytes(12).toString("hex");
+    const session = {
+      id,
+      status: "pending",
+      code: null,
+      verifyUrl: null,
+      output: [],
+      exitCode: null,
+      startedAt: Date.now(),
+      child: null
+    };
+    this.sessions.set(id, session);
+    return session;
+  }
+
+  cleanupAuthSession(id) {
+    const session = this.sessions.get(id);
+    if (!session) return;
+    if (session.child) {
+      session.child.kill("SIGTERM");
+    }
+    this.sessions.delete(id);
+  }
+
+  startAuthFlow() {
+    const exists = fs.existsSync(DOWNLOADER_PATH);
+    if (!exists) {
+      throw new Error("El descargador de Hytale no existe en la ruta especificada");
+    }
+
+    const session = this.createAuthSession();
+    const child = spawn(DOWNLOADER_PATH, [], { cwd: BASE_DIR });
+    session.child = child;
+    session.status = "waiting";
+
+    const handleChunk = (chunk) => {
+      const text = chunk.toString();
+      session.output.push(text);
+      const lines = text.split(/\r?\n/);
+      for (const line of lines) {
+        const parsed = parseDeviceFlowOutput(line);
+        if (parsed.code) session.code = parsed.code;
+        if (parsed.url) session.verifyUrl = parsed.url;
+        if (parsed.isSuccess && session.status !== "success") {
+          session.status = "success";
+          if (session.child) session.child.kill("SIGTERM");
+        }
+        if (parsed.isFailed && session.status !== "error") {
+          session.status = "error";
+        }
+      }
+    };
+
+    child.stdout.on("data", handleChunk);
+    child.stderr.on("data", handleChunk);
+
+    child.on("close", (code) => {
+      session.exitCode = code;
+      if (session.status !== "success") {
+        session.status = code === 0 ? "success" : "error";
+      }
+      console.log(`[Downloader Auth] Process exited with code ${code}, final status: ${session.status}`);
+    });
+
+    return {
+      id: session.id,
+      status: session.status,
+      code: session.code,
+      verifyUrl: session.verifyUrl
+    };
+  }
+
+  getAuthStatus(id) {
+    if (!id || !this.sessions.has(id)) {
+      throw new Error("Sesión no encontrada");
+    }
+    const session = this.sessions.get(id);
+    return {
+      id: session.id,
+      status: session.status,
+      code: session.code,
+      verifyUrl: session.verifyUrl,
+      exitCode: session.exitCode,
+      output: session.output.slice(-50)
+    };
+  }
+}
+
+class DiscordService {
+  constructor() {
+    this.client = null;
+    this.ready = false;
+  }
+
+  async loadConfig() {
+    try {
+      const content = await fsp.readFile(DISCORD_CONFIG_PATH, "utf-8");
+      return JSON.parse(content);
+    } catch {
+      return { botToken: "", channelId: "", enabled: false };
+    }
+  }
+
+  async saveConfig(config) {
+    await fsp.writeFile(DISCORD_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+  }
+
+  async initBot() {
+    const config = await this.loadConfig();
+
+    if (!config.enabled || !config.botToken) {
+      console.log("[Discord] Bot deshabilitado o sin token");
+      return;
+    }
+
+    if (this.client) {
+      try {
+        await this.client.destroy();
+      } catch (e) {
+        console.error("[Discord] Error al destruir cliente anterior:", e.message);
+      }
+    }
+
+    this.client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+    this.client.once("ready", () => {
+      console.log(`[Discord] Bot conectado como ${this.client.user.tag}`);
+      this.ready = true;
+    });
+
+    this.client.on("error", (error) => {
+      console.error("[Discord] Error:", error.message);
+      this.ready = false;
+    });
+
+    try {
+      await this.client.login(config.botToken);
+    } catch (error) {
+      console.error("[Discord] Error al iniciar bot:", error.message);
+      this.ready = false;
+    }
+  }
+
+  async sendNotification(isOnline) {
+    try {
+      const config = await this.loadConfig();
+
+      if (!config.enabled || !config.channelId || !this.ready || !this.client) {
+        return;
+      }
+
+      const language = await getAppLanguage();
+      const i18n = await getDiscordTranslations(language);
+
+      const channel = await this.client.channels.fetch(config.channelId);
+      if (!channel || !channel.isTextBased()) {
+        console.error("[Discord] Canal no válido");
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(isOnline ? i18n.title_online : i18n.title_offline)
+        .setDescription(isOnline ? i18n.description_online : i18n.description_offline)
+        .setColor(isOnline ? 0x00ff00 : 0xff0000)
+        .setTimestamp()
+        .setFooter({ text: i18n.footer });
+
+      await channel.send({ embeds: [embed] });
+
+      const newName = isOnline ? i18n.channel_online : i18n.channel_offline;
+      try {
+        await channel.setName(newName);
+      } catch (e) {
+        console.error("[Discord] Could not rename channel:", e.message);
+      }
+
+      console.log(`[Discord] Notificación enviada: ${isOnline ? "ONLINE" : "OFFLINE"}`);
+    } catch (error) {
+      console.error("[Discord] Error al enviar notificación:", error.message);
+    }
+  }
+}
+
+// Service singletons
+const authService = new AuthService({
+  authConfigPath: AUTH_CONFIG_PATH,
+  setupConfigPath: SETUP_CONFIG_PATH,
+  tokenTtlMs: TOKEN_TTL_MS
+});
+
+const serverService = new ServerService({
+  baseDir: BASE_DIR,
+  startScript: START_SCRIPT,
+  stopScript: STOP_SCRIPT,
+  screenName: SCREEN_NAME
+});
+
+const fileService = new FileService();
+const backupService = new BackupService();
+const downloaderService = new DownloaderService();
+const discordService = new DiscordService();
+
 // ============ DESCARGADOR: AUTH DEVICE FLOW ============
 
 function parseDeviceFlowOutput(line) {
@@ -869,44 +1622,6 @@ async function saveDiscordConfig(config) {
   await fsp.writeFile(DISCORD_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
 }
 
-async function initDiscordBot() {
-  const config = await loadDiscordConfig();
-  
-  if (!config.enabled || !config.botToken) {
-    console.log("[Discord] Bot deshabilitado o sin token");
-    return;
-  }
-
-  if (discordClient) {
-    try {
-      await discordClient.destroy();
-    } catch (e) {
-      console.error("[Discord] Error al destruir cliente anterior:", e.message);
-    }
-  }
-
-  discordClient = new Client({
-    intents: [GatewayIntentBits.Guilds]
-  });
-
-  discordClient.once("ready", () => {
-    console.log(`[Discord] Bot conectado como ${discordClient.user.tag}`);
-    discordReady = true;
-  });
-
-  discordClient.on("error", (error) => {
-    console.error("[Discord] Error:", error.message);
-    discordReady = false;
-  });
-
-  try {
-    await discordClient.login(config.botToken);
-  } catch (error) {
-    console.error("[Discord] Error al iniciar bot:", error.message);
-    discordReady = false;
-  }
-}
-
 // Get saved language preference from config file
 async function getAppLanguage() {
   try {
@@ -951,75 +1666,6 @@ async function getDiscordTranslations(language = 'es') {
   };
 }
 
-async function sendDiscordNotification(isOnline) {
-  try {
-    const config = await loadDiscordConfig();
-    
-    if (!config.enabled || !config.channelId || !discordReady || !discordClient) {
-      return;
-    }
-
-    // Get language and translations from saved configuration
-    const language = await getAppLanguage();
-    const i18n = await getDiscordTranslations(language);
-
-    const channel = await discordClient.channels.fetch(config.channelId);
-    if (!channel || !channel.isTextBased()) {
-      console.error("[Discord] Canal no válido");
-      return;
-    }
-
-    const embed = new EmbedBuilder()
-      .setTitle(isOnline ? i18n.title_online : i18n.title_offline)
-      .setDescription(isOnline 
-        ? i18n.description_online
-        : i18n.description_offline
-      )
-      .setColor(isOnline ? 0x00FF00 : 0xFF0000)
-      .setTimestamp()
-      .setFooter({ text: i18n.footer });
-
-    await channel.send({ embeds: [embed] });
-
-    const newName = isOnline ? i18n.channel_online : i18n.channel_offline;
-    try {
-      await channel.setName(newName);
-    } catch (e) {
-      console.error("[Discord] Could not rename channel:", e.message);
-    }
-
-    console.log(`[Discord] Notificación enviada: ${isOnline ? "ONLINE" : "OFFLINE"}`);
-  } catch (error) {
-    console.error("[Discord] Error al enviar notificación:", error.message);
-  }
-}
-
-// ============ AUTENTICACIÓN ============
-
-function cleanupTokens() {
-  const now = Date.now();
-  for (const [token, meta] of tokens.entries()) {
-    if (now - meta.createdAt > TOKEN_TTL_MS) {
-      tokens.delete(token);
-    }
-  }
-}
-
-function authMiddleware(req, res, next) {
-  if (!req.path.startsWith("/api")) {
-    return next();
-  }
-  if (req.path === "/api/login") return next();
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-  cleanupTokens();
-  if (!token || !tokens.has(token)) {
-    res.status(401).json({ error: "No autorizado" });
-    return;
-  }
-  next();
-}
-
 // =============================================================================
 // ============ SETUP ROUTES ============
 // These routes do NOT require authentication (accessible on first run)
@@ -1027,17 +1673,10 @@ function authMiddleware(req, res, next) {
 
 // ============ SETUP STATUS ENDPOINT ============
 // Check if initial setup has been completed
-app.get("/api/setup/status", (req, res) => {
+app.get("/api/setup/status", async (_req, res) => {
   try {
-    if (fs.existsSync(SETUP_CONFIG_PATH)) {
-      const setupConfig = JSON.parse(fs.readFileSync(SETUP_CONFIG_PATH, "utf8"));
-      res.json({
-        setupCompleted: true,
-        language: setupConfig.language
-      });
-    } else {
-      res.json({ setupCompleted: false });
-    }
+    const status = await authService.getSetupStatus();
+    res.json(status);
   } catch (error) {
     res.json({ setupCompleted: false });
   }
@@ -1047,43 +1686,11 @@ app.get("/api/setup/status", (req, res) => {
 app.post("/api/setup/complete", async (req, res) => {
   try {
     const { username, password, language } = req.body;
-    
-    if (!username || !password || !language) {
-      return res.status(400).json({ error: "Faltan datos requeridos" });
-    }
-    
-    if (password.length < 4) {
-      return res.status(400).json({ error: "La contraseña debe tener al menos 4 caracteres" });
-    }
-    
-    // Save setup configuration to file
-    const setupConfig = {
-      setupCompleted: true,
-      language,
-      completedAt: new Date().toISOString()
-    };
-    
-    await fsp.writeFile(SETUP_CONFIG_PATH, JSON.stringify(setupConfig, null, 2));
-    
-    // Encrypt and save authentication configuration
-    const encryptedPassword = encryptPassword(password.trim());
-    const authConfig = {
-      username: username.trim(),
-      password: encryptedPassword,
-      encrypted: true,
-      encryptedAt: new Date().toISOString()
-    };
-    
-    await fsp.writeFile(AUTH_CONFIG_PATH, JSON.stringify(authConfig, null, 2));
-    
-    // Update environment variables in memory for server process
-    process.env.PANEL_USER = username.trim();
-    process.env.PANEL_PASS = password.trim();
-    
+    await authService.completeSetup({ username, password, language });
     res.json({ success: true });
   } catch (error) {
     console.error("[ERROR] Setup completion:", error);
-    res.status(500).json({ error: "Error al completar el setup" });
+    res.status(400).json({ error: error.message || "Error al completar el setup" });
   }
 });
 
@@ -1093,69 +1700,28 @@ app.post("/api/setup/complete", async (req, res) => {
 
 // ============ AUTHENTICATION MIDDLEWARE ============
 // Apply authentication middleware BEFORE defining API routes that require auth
-app.use(authMiddleware);
+app.use(authService.middleware);
 
-app.post("/api/login", (req, res) => {
-  const { username, password } = req.body || {};
-  
-  // Load credentials from config file if it exists (encrypted or plain)
-  let expectedUser = "admin";
-  let expectedPass = "admin";
-  let isEncrypted = false;
-  
+app.post("/api/login", async (req, res) => {
   try {
-    if (fs.existsSync(AUTH_CONFIG_PATH)) {
-      const authConfig = JSON.parse(fs.readFileSync(AUTH_CONFIG_PATH, "utf8"));
-      expectedUser = authConfig.username || expectedUser;
-      
-      // Decrypt password if it's encrypted
-      if (authConfig.encrypted && authConfig.password) {
-        try {
-          expectedPass = decryptPassword(authConfig.password);
-          isEncrypted = true;
-        } catch (error) {
-          console.error("[ERROR] Failed to decrypt password:", error);
-          expectedPass = authConfig.password;
-        }
-      } else {
-        expectedPass = authConfig.password || expectedPass;
-      }
-    }
+    const { username, password } = req.body || {};
+    const result = await authService.login(username, password);
+    res.json(result);
   } catch (error) {
-    console.error("[ERROR] Loading auth config:", error);
+    res.status(401).json({ error: error.message || "Credenciales inválidas" });
   }
-  
-  // Fallback a variables de entorno
-  expectedUser = process.env.PANEL_USER || expectedUser;
-  expectedPass = process.env.PANEL_PASS || expectedPass;
-  
-  const receivedUser = (username || "").trim();
-  const receivedPass = (password || "").trim();
-  
-  if (receivedUser === expectedUser && receivedPass === expectedPass) {
-    const token = crypto.randomBytes(24).toString("hex");
-    tokens.set(token, { createdAt: Date.now() });
-    res.json({ token, expiresInMs: TOKEN_TTL_MS });
-    return;
-  }
-  res.status(401).json({ error: "Credenciales inválidas" });
 });
 
 app.get("/api/status", async (req, res) => {
-  const status = await getScreenStatus();
+  const status = await serverService.getStatus();
   res.json(status);
 });
 
 app.post("/api/start", async (req, res) => {
   try {
-    if (IS_WINDOWS) {
-      await startServerProcessNode();
-      res.json({ output: "Server started (Windows)" });
-    } else {
-      const output = await runScript(START_SCRIPT);
-      res.json({ output });
-    }
-    sendDiscordNotification(true).catch(err => 
+    const output = await serverService.start();
+    res.json({ output });
+    discordService.sendNotification(true).catch((err) =>
       console.error("[Discord] Error al enviar notificación de inicio:", err.message)
     );
   } catch (error) {
@@ -1165,14 +1731,9 @@ app.post("/api/start", async (req, res) => {
 
 app.post("/api/stop", async (req, res) => {
   try {
-    if (IS_WINDOWS) {
-      await stopServerProcessNode();
-      res.json({ output: "Server stopped (Windows)" });
-    } else {
-      const output = await runScript(STOP_SCRIPT);
-      res.json({ output });
-    }
-    sendDiscordNotification(false).catch(err => 
+    const output = await serverService.stop();
+    res.json({ output });
+    discordService.sendNotification(false).catch((err) =>
       console.error("[Discord] Error al enviar notificación de detención:", err.message)
     );
   } catch (error) {
@@ -1182,16 +1743,9 @@ app.post("/api/stop", async (req, res) => {
 
 app.get("/api/logs", async (req, res) => {
   try {
-    const logFile = path.join(BASE_DIR, "server.log");
     const lines = parseInt(req.query.lines) || 100;
-    if (!fs.existsSync(logFile)) {
-      res.json({ logs: "" });
-      return;
-    }
-    const content = await fsp.readFile(logFile, "utf-8");
-    const allLines = content.split("\n").map(stripAnsi);
-    const lastLines = allLines.slice(-lines).join("\n");
-    res.json({ logs: lastLines });
+    const logs = await serverService.readLogs(lines);
+    res.json({ logs });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
@@ -1200,38 +1754,7 @@ app.get("/api/logs", async (req, res) => {
 app.post("/api/command", async (req, res) => {
   try {
     const { command } = req.body;
-    if (!command || typeof command !== "string") {
-      res.status(400).json({ error: "Comando inválido" });
-      return;
-    }
-    const status = await getScreenStatus();
-    if (!status.running) {
-      res.status(400).json({ error: "El servidor no está en ejecución" });
-      return;
-    }
-
-    if (IS_WINDOWS) {
-      if (!serverProcess || serverProcessExited || !serverProcess.stdin) {
-        res.status(400).json({ error: "No se puede enviar comando: proceso no disponible" });
-        return;
-      }
-      serverProcess.stdin.write(`${command}\n`);
-    } else {
-      await new Promise((resolve, reject) => {
-        execFile(
-          "screen",
-          ["-S", SCREEN_NAME, "-X", "stuff", `${command}\n`],
-          (err, stdout, stderr) => {
-            if (err) {
-              reject(new Error(stderr || stdout || err.message));
-              return;
-            }
-            resolve();
-          }
-        );
-      });
-    }
-
+    await serverService.sendCommand(command);
     res.json({ ok: true, command });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -1240,26 +1763,8 @@ app.post("/api/command", async (req, res) => {
 
 app.get("/api/metrics", async (req, res) => {
   try {
-    console.log("[DEBUG] /api/metrics called");
-    const { xmx, jarName } = await readStartConfig();
-    console.log("[DEBUG] Config: xmx=" + xmx + ", jarName=" + jarName);
-    const processUsage = await getServerProcessUsage(jarName);
-    console.log("[DEBUG] Process Usage:", processUsage);
-    const disk = await checkDiskSpace(BASE_DIR);
-    const folderSize = await getFolderSizeBytes(BASE_DIR);
-    res.json({
-      server: {
-        pid: processUsage?.pid || null,
-        cpu: processUsage?.cpu || 0,
-        memoryBytes: processUsage?.memory || 0,
-        maxMemoryBytes: xmx
-      },
-      storage: {
-        folderBytes: folderSize,
-        diskTotalBytes: disk.total,
-        diskFreeBytes: disk.free
-      }
-    });
+    const metrics = await serverService.getMetrics();
+    res.json(metrics);
   } catch (error) {
     console.error("[ERROR] /api/metrics:", error);
     res.status(500).json({ error: formatError(error) });
@@ -1270,21 +1775,8 @@ app.get("/api/files", async (req, res) => {
   try {
     const relPath = req.query.path || ".";
     rejectHiddenPath(relPath);
-    const target = resolveSafe(relPath);
-    const entries = await fsp.readdir(target, { withFileTypes: true });
-    const items = [];
-    for (const entry of entries) {
-      if (isHiddenFile(entry.name)) continue;
-      const full = path.join(target, entry.name);
-      const stat = await fsp.stat(full);
-      items.push({
-        name: entry.name,
-        type: entry.isDirectory() ? "dir" : "file",
-        size: stat.size,
-        mtime: stat.mtimeMs
-      });
-    }
-    res.json({ path: relPath, items });
+    const data = await fileService.list(relPath);
+    res.json(data);
   } catch (error) {
     res.status(400).json({ error: formatError(error) });
   }
@@ -1317,13 +1809,7 @@ app.post("/api/files/unzip", async (req, res) => {
       return;
     }
     rejectHiddenPath(relPath);
-    const zipPath = resolveSafe(relPath);
-    if (isHiddenFile(zipPath)) {
-      res.status(400).json({ error: "Archivo no permitido" });
-      return;
-    }
-    const zip = new AdmZip(zipPath);
-    zip.extractAllTo(path.dirname(zipPath), true);
+    await fileService.unzip(relPath);
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: formatError(error) });
@@ -1338,12 +1824,7 @@ app.delete("/api/files", async (req, res) => {
       return;
     }
     rejectHiddenPath(relPath);
-    const target = resolveSafe(relPath);
-    if (isHiddenFile(target)) {
-      res.status(400).json({ error: "Archivo no permitido" });
-      return;
-    }
-    await fsp.rm(target, { recursive: true, force: true });
+    await fileService.remove(relPath);
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: formatError(error) });
@@ -1358,12 +1839,7 @@ app.get("/api/files/content", async (req, res) => {
       return;
     }
     rejectHiddenPath(relPath);
-    const target = resolveSafe(relPath);
-    if (isHiddenFile(target)) {
-      res.status(400).json({ error: "Archivo no permitido" });
-      return;
-    }
-    const content = await fsp.readFile(target, "utf-8");
+    const content = await fileService.readContent(relPath);
     res.json({ content });
   } catch (error) {
     res.status(400).json({ error: formatError(error) });
@@ -1378,17 +1854,8 @@ app.put("/api/files/content", async (req, res) => {
       return;
     }
     rejectHiddenPath(relPath);
-    const target = resolveSafe(relPath);
-    if (isHiddenFile(target)) {
-      res.status(400).json({ error: "Archivo no permitido" });
-      return;
-    }
     const content = req.body?.content;
-    if (typeof content !== "string") {
-      res.status(400).json({ error: "Contenido inválido" });
-      return;
-    }
-    await fsp.writeFile(target, content, "utf-8");
+    await fileService.writeContent(relPath, content);
     res.json({ ok: true });
   } catch (error) {
     res.status(400).json({ error: formatError(error) });
@@ -1427,8 +1894,8 @@ app.put("/api/config", async (req, res) => {
 
 app.get("/api/backup/status", async (req, res) => {
   try {
-    const { dir } = await resolveBackupDirectory();
-    res.json({ available: true, path: dir, backupDir: dir });
+    const status = await backupService.status();
+    res.json(status);
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
@@ -1436,13 +1903,7 @@ app.get("/api/backup/status", async (req, res) => {
 
 app.post("/api/backup/create", async (req, res) => {
   try {
-    const { dir: backupDir } = await resolveBackupDirectory();
-    await fsp.mkdir(backupDir, { recursive: true });
-    const backupName = `HytaleServer-${formatDateForBackup()}`;
-    const backupPath = path.join(backupDir, `${backupName}.zip`);
-      const zip = new AdmZip();
-      await addDirToZipExcludeHidden(zip, BASE_DIR);
-      zip.writeZip(backupPath);
+    const { backupName, backupPath } = await backupService.createBackup();
     res.json({ ok: true, backup: backupName, path: backupPath });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -1451,27 +1912,8 @@ app.post("/api/backup/create", async (req, res) => {
 
 app.get("/api/backup/list", async (req, res) => {
   try {
-    const { dir: backupDir } = await resolveBackupDirectory();
-    try {
-      const files = await fsp.readdir(backupDir);
-      const backups = [];
-      for (const file of files) {
-        if (file.endsWith(".zip")) {
-          const fullPath = path.join(backupDir, file);
-          const stat = await fsp.stat(fullPath);
-          backups.push({
-            name: file.replace(".zip", ""),
-            size: stat.size,
-            mtime: stat.mtimeMs,
-            file: file
-          });
-        }
-      }
-      backups.sort((a, b) => b.mtime - a.mtime);
-      res.json({ available: true, backups });
-    } catch (error) {
-      res.json({ available: true, backups: [] });
-    }
+    const backups = await backupService.listBackups();
+    res.json(backups);
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
@@ -1479,18 +1921,8 @@ app.get("/api/backup/list", async (req, res) => {
 
 app.delete("/api/backup/:file", async (req, res) => {
   try {
-    const { dir: backupDir } = await resolveBackupDirectory();
     const file = req.params.file;
-    if (!file.endsWith(".zip") || file.includes("..") || file.includes("/")) {
-      res.status(400).json({ error: "Nombre de archivo inválido" });
-      return;
-    }
-    const backupPath = path.join(backupDir, file);
-    if (!backupPath.startsWith(backupDir + path.sep)) {
-      res.status(400).json({ error: "Ruta inválida" });
-      return;
-    }
-    await fsp.unlink(backupPath);
+    await backupService.deleteBackup(file);
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -1499,59 +1931,9 @@ app.delete("/api/backup/:file", async (req, res) => {
 
 app.post("/api/backup/restore/:file", async (req, res) => {
   try {
-      const { dir: backupDir } = await resolveBackupDirectory();
       const file = req.params.file;
-      if (!file.endsWith(".zip") || file.includes("..") || file.includes("/")) {
-        res.status(400).json({ error: "Nombre de archivo inválido" });
-        return;
-      }
-      const backupPath = path.join(backupDir, file);
-      if (!backupPath.startsWith(backupDir + path.sep)) {
-        res.status(400).json({ error: "Ruta inválida" });
-        return;
-      }
-      if (!fs.existsSync(backupPath)) {
-        res.status(404).json({ error: "Backup no encontrado" });
-        return;
-      }
-
-      // Guardar binarios/protegidos antes de limpiar
-      const tempKeepDir = path.join(BASE_DIR, ".temp_keep_backup");
-      await fsp.mkdir(tempKeepDir, { recursive: true });
-      const keepNames = [
-        "hytale-downloader-linux-amd64",
-        "hytale-downloader-windows-amd64.exe",
-        ".hytale-downloader-credentials.json"
-      ];
-
-      const keepFiles = (await fsp.readdir(BASE_DIR))
-        .filter(f => f.endsWith('.sh') || keepNames.includes(f))
-        .map(f => path.join(BASE_DIR, f));
-
-      for (const keepFile of keepFiles) {
-        const fileName = path.basename(keepFile);
-        await fsp.copyFile(keepFile, path.join(tempKeepDir, fileName)).catch(() => {});
-      }
-
-      // Limpiar directorio actual
-      await fsp.rm(BASE_DIR, { recursive: true, force: true });
-      await fsp.mkdir(BASE_DIR, { recursive: true });
-
-      // Extraer backup
-      const zip = new AdmZip(backupPath);
-      zip.extractAllTo(BASE_DIR, true);
-
-      // Restaurar archivos protegidos
-      const restoredKeeps = await fsp.readdir(tempKeepDir).catch(() => []);
-      for (const fileName of restoredKeeps) {
-        const from = path.join(tempKeepDir, fileName);
-        const to = path.join(BASE_DIR, fileName);
-        await fsp.copyFile(from, to).catch(() => {});
-      }
-
-      await fsp.rm(tempKeepDir, { recursive: true, force: true }).catch(() => {});
-
-      res.json({ ok: true, restoredFrom: backupPath });
+      const restoredFrom = await backupService.restoreBackup(file);
+      res.json({ ok: true, restoredFrom });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
@@ -1561,12 +1943,12 @@ app.post("/api/backup/restore/:file", async (req, res) => {
 
 app.get("/api/discord/config", async (req, res) => {
   try {
-    const config = await loadDiscordConfig();
+    const config = await discordService.loadConfig();
     res.json({
       enabled: config.enabled,
       channelId: config.channelId,
       hasToken: !!config.botToken,
-      botStatus: discordReady ? "connected" : "disconnected"
+      botStatus: discordService.ready ? "connected" : "disconnected"
     });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -1576,27 +1958,27 @@ app.get("/api/discord/config", async (req, res) => {
 app.post("/api/discord/config", async (req, res) => {
   try {
     const { botToken, channelId, enabled } = req.body;
-    const currentConfig = await loadDiscordConfig();
-    
+    const currentConfig = await discordService.loadConfig();
+
     const newConfig = {
       botToken: botToken !== undefined ? botToken : currentConfig.botToken,
       channelId: channelId !== undefined ? channelId : currentConfig.channelId,
       enabled: enabled !== undefined ? enabled : currentConfig.enabled
     };
 
-    await saveDiscordConfig(newConfig);
+    await discordService.saveConfig(newConfig);
     
     if (newConfig.enabled && newConfig.botToken) {
-      await initDiscordBot();
-    } else if (discordClient) {
-      await discordClient.destroy();
-      discordClient = null;
-      discordReady = false;
+      await discordService.initBot();
+    } else if (discordService.client) {
+      await discordService.client.destroy();
+      discordService.client = null;
+      discordService.ready = false;
     }
 
     res.json({ 
       success: true,
-      botStatus: discordReady ? "connected" : "disconnected"
+      botStatus: discordService.ready ? "connected" : "disconnected"
     });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -1605,11 +1987,11 @@ app.post("/api/discord/config", async (req, res) => {
 
 app.post("/api/discord/test", async (req, res) => {
   try {
-    if (!discordReady) {
+    if (!discordService.ready) {
       res.status(400).json({ error: "Bot no está conectado" });
       return;
     }
-    await sendDiscordNotification(true);
+    await discordService.sendNotification(true);
     res.json({ success: true, message: "Mensaje de prueba enviado" });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -1641,17 +2023,8 @@ const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
   });
 app.get("/api/server/config", async (req, res) => {
   try {
-    if (fs.existsSync(SERVER_CONFIG_PATH)) {
-      const config = JSON.parse(await fsp.readFile(SERVER_CONFIG_PATH, "utf8"));
-      res.json(config);
-    } else {
-      // Valores por defecto
-      res.json({
-        threads: 4,
-        ramMin: 2048,
-        ramMax: 4096
-      });
-    }
+    const config = await serverService.getServerConfig();
+    res.json(config);
   } catch (error) {
     console.error("[ERROR] Loading server config:", error);
     res.status(500).json({ error: formatError(error) });
@@ -1662,27 +2035,7 @@ app.get("/api/server/config", async (req, res) => {
 app.post("/api/server/config", async (req, res) => {
   try {
     const { threads, ramMin, ramMax } = req.body;
-    
-    // Validaciones
-    if (!threads || !ramMin || !ramMax) {
-      return res.status(400).json({ error: "Faltan parámetros requeridos" });
-    }
-    
-    if (threads < 1 || threads > 32) {
-      return res.status(400).json({ error: "Los hilos deben estar entre 1 y 32" });
-    }
-    
-    if (ramMin >= ramMax) {
-      return res.status(400).json({ error: "La RAM mínima debe ser menor que la máxima" });
-    }
-    
-    if (ramMin < 512) {
-      return res.status(400).json({ error: "La RAM mínima debe ser al menos 512 MB" });
-    }
-    
-    const config = { threads, ramMin, ramMax };
-    await fsp.writeFile(SERVER_CONFIG_PATH, JSON.stringify(config, null, 2));
-    
+    const config = await serverService.saveServerConfig({ threads, ramMin, ramMax });
     res.json({ success: true, config });
   } catch (error) {
     console.error("[ERROR] Saving server config:", error);
@@ -1699,8 +2052,8 @@ const BACKUP_CONFIG_PATH = path.join(BASE_DIR, "backup-config.json");
 // Retrieve backup configuration (location and settings)
 app.get("/api/backup/config", async (req, res) => {
   try {
-    const { dir } = await resolveBackupDirectory();
-    res.json({ backupLocation: dir, enabled: true });
+    const config = await backupService.getBackupConfig();
+    res.json(config);
   } catch (error) {
     console.error("[ERROR] Loading backup config:", error);
     res.status(500).json({ error: formatError(error) });
@@ -1711,34 +2064,7 @@ app.get("/api/backup/config", async (req, res) => {
 app.post("/api/backup/config", async (req, res) => {
   try {
     const { backupLocation } = req.body;
-    
-    if (!backupLocation) {
-      return res.status(400).json({ error: "Backup location is required" });
-    }
-    
-    // Validar que es una ruta válida
-    const absolutePath = path.resolve(backupLocation);
-    
-    // Crear directorio si no existe
-    if (!fs.existsSync(absolutePath)) {
-      fs.mkdirSync(absolutePath, { recursive: true });
-    }
-    
-    // Verificar permisos de escritura
-    try {
-      fs.accessSync(absolutePath, fs.constants.W_OK);
-    } catch {
-      return res.status(403).json({ error: "No tiene permisos de escritura en esta ubicación" });
-    }
-    
-    const config = {
-      backupLocation: absolutePath,
-      enabled: true,
-      updatedAt: new Date().toISOString()
-    };
-    
-    await fsp.writeFile(BACKUP_CONFIG_PATH, JSON.stringify(config, null, 2));
-    
+    const config = await backupService.saveBackupConfig(backupLocation);
     res.json({ success: true, config });
   } catch (error) {
     console.error("[ERROR] Saving backup config:", error);
@@ -1751,80 +2077,8 @@ app.post("/api/backup/config", async (req, res) => {
 // Verificar si el downloader existe y es ejecutable
 app.get("/api/downloader/status", async (req, res) => {
   try {
-    const exists = fs.existsSync(DOWNLOADER_PATH);
-    let isExecutable = false;
-    let version = null;
-    let gameVersion = null;
-    let lastDownload = null;
-    
-    if (exists) {
-      const stats = await fsp.stat(DOWNLOADER_PATH);
-      isExecutable = !!(stats.mode & fs.constants.X_OK);
-      
-      // Attempt to get downloader version from executable
-      if (isExecutable) {
-        try {
-          const versionOutput = await new Promise((resolve, reject) => {
-            exec(`"${DOWNLOADER_PATH}" -version`, { cwd: BASE_DIR }, (err, stdout) => {
-              if (err) reject(err);
-              else resolve(stdout.trim());
-            });
-          });
-          version = versionOutput;
-          
-          // Attempt to get game version from available files
-          const gameVersionOutput = await new Promise((resolve, reject) => {
-            exec(`"${DOWNLOADER_PATH}" -print-version`, { cwd: BASE_DIR, timeout: 10000 }, (err, stdout) => {
-              if (err) reject(err);
-              else resolve(stdout.trim());
-            });
-          });
-          gameVersion = gameVersionOutput;
-        } catch (e) {
-          console.error("[Downloader] Error obteniendo versión:", e.message);
-        }
-      }
-    }
-    
-    // Verificar si ya existe instalación del servidor
-    const serverJarExists = fs.existsSync(path.join(BASE_DIR, "HytaleServer.jar"));
-    const assetsExists = fs.existsSync(path.join(BASE_DIR, "Assets.zip"));
-    const isInstalled = serverJarExists && assetsExists;
-    
-    // Verificar si el downloader está autenticado (tiene credenciales válidas)
-    const credentialsPath = path.join(BASE_DIR, ".hytale-downloader-credentials.json");
-    let isAuthenticated = false;
-    try {
-      if (fs.existsSync(credentialsPath)) {
-        const credContent = await fsp.readFile(credentialsPath, "utf-8");
-        const credentials = JSON.parse(credContent);
-        // Si el archivo existe y tiene contenido válido, está autenticado
-        isAuthenticated = !!credentials && Object.keys(credentials).length > 0;
-      }
-    } catch (e) {
-      // Si hay error leyendo, asumimos no autenticado
-      isAuthenticated = false;
-    }
-    
-    if (fs.existsSync(DOWNLOAD_STATUS_PATH)) {
-      try {
-        const content = await fsp.readFile(DOWNLOAD_STATUS_PATH, "utf-8");
-        lastDownload = JSON.parse(content);
-      } catch {
-        lastDownload = null;
-      }
-    }
-    
-    res.json({
-      exists,
-      isExecutable,
-      version,
-      gameVersion,
-      isInstalled,
-      isAuthenticated,
-      lastDownload,
-      path: DOWNLOADER_PATH
-    });
+    const status = await downloaderService.status();
+    res.json(status);
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
@@ -1833,37 +2087,12 @@ app.get("/api/downloader/status", async (req, res) => {
 // Descargar el servidor usando hytale-downloader
 app.post("/api/downloader/download", async (req, res) => {
   try {
-    const downloaderExists = fs.existsSync(DOWNLOADER_PATH);
-    if (!downloaderExists) {
-      res.status(400).json({ error: "El descargador de Hytale no existe en la ruta especificada" });
-      return;
-    }
-    
-    // Verificar que sea ejecutable
-    const stats = await fsp.stat(DOWNLOADER_PATH);
-    if (!(stats.mode & fs.constants.X_OK)) {
-      // Attempt to make downloader executable
-      await fsp.chmod(DOWNLOADER_PATH, 0o755);
-    }
-    
     res.json({ 
       success: true, 
       message: "Descarga iniciada. Esto puede tomar varios minutos..."
     });
-    
-    // Ejecutar en background
-    exec(`"${DOWNLOADER_PATH}"`, { cwd: BASE_DIR }, async (err, stdout, stderr) => {
-      if (err) {
-        console.error("[Downloader] Error:", stderr || err.message);
-      } else {
-        console.log("[Downloader] Completado:", stdout);
-        const zip = await findDownloadedZip();
-        if (zip) {
-          console.log(`[Downloader] ZIP encontrado: ${zip}`);
-          await unzipAndCleanup(zip);
-        }
-      }
-    });
+
+    await downloaderService.download();
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
@@ -1872,114 +2101,37 @@ app.post("/api/downloader/download", async (req, res) => {
 // Iniciar flujo de autenticación (device code) para el downloader
 app.post("/api/downloader/auth/start", async (req, res) => {
   try {
-    const exists = fs.existsSync(DOWNLOADER_PATH);
-    if (!exists) {
-      res.status(400).json({ error: "El descargador de Hytale no existe en la ruta especificada" });
-      return;
-    }
-
-    const session = createAuthSession();
-
-    // Run downloader WITHOUT arguments to trigger actual download which requires auth
-    // This will show the device flow if not authenticated
-    const child = spawn(DOWNLOADER_PATH, [], { cwd: BASE_DIR });
-    session.child = child;
-    session.status = "waiting";
-
-    child.stdout.on("data", (chunk) => {
-      const text = chunk.toString();
-      session.output.push(text);
-      const lines = text.split(/\r?\n/);
-      for (const line of lines) {
-        const parsed = parseDeviceFlowOutput(line);
-        if (parsed.code) session.code = parsed.code;
-        if (parsed.url) session.verifyUrl = parsed.url;
-        
-        // Update status based on authentication messages
-        if (parsed.isSuccess && session.status !== "success") {
-          session.status = "success";
-          console.log("[Downloader Auth] Authentication successful!");
-          // Kill the child process since we only wanted to authenticate, not download
-          if (session.child) {
-            session.child.kill("SIGTERM");
-          }
-        }
-        if (parsed.isFailed && session.status !== "error") {
-          session.status = "error";
-          console.log("[Downloader Auth] Authentication failed");
-        }
-      }
-    });
-
-    child.stderr.on("data", (chunk) => {
-      const text = chunk.toString();
-      session.output.push(text);
-      // Also parse stderr for auth messages
-      const lines = text.split(/\r?\n/);
-      for (const line of lines) {
-        const parsed = parseDeviceFlowOutput(line);
-        if (parsed.isSuccess) session.status = "success";
-        if (parsed.isFailed) session.status = "error";
-      }
-    });
-
-    child.on("close", (code) => {
-      session.exitCode = code;
-      // Only mark as error if not already marked as success
-      if (session.status !== "success") {
-        session.status = code === 0 ? "success" : "error";
-      }
-      console.log(`[Downloader Auth] Process exited with code ${code}, final status: ${session.status}`);
-    });
-
-    res.json({
-      id: session.id,
-      status: session.status,
-      code: session.code,
-      verifyUrl: session.verifyUrl
-    });
+    const session = downloaderService.startAuthFlow();
+    res.json(session);
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
   }
 });
 
 app.get("/api/downloader/auth/status", (req, res) => {
-  const { id } = req.query;
-  if (!id || !DOWNLOADER_AUTH_SESSIONS.has(id)) {
-    res.status(404).json({ error: "Sesión no encontrada" });
-    return;
+  try {
+    const { id } = req.query;
+    const status = downloaderService.getAuthStatus(id);
+    res.json(status);
+  } catch (error) {
+    res.status(404).json({ error: error.message });
   }
-  const session = DOWNLOADER_AUTH_SESSIONS.get(id);
-  res.json({
-    id: session.id,
-    status: session.status,
-    code: session.code,
-    verifyUrl: session.verifyUrl,
-    exitCode: session.exitCode,
-    output: session.output.slice(-50)
-  });
 });
 
 app.post("/api/downloader/auth/cancel", (req, res) => {
-  const { id } = req.body || {};
-  if (!id || !DOWNLOADER_AUTH_SESSIONS.has(id)) {
-    res.status(404).json({ error: "Sesión no encontrada" });
-    return;
+  try {
+    const { id } = req.body || {};
+    downloaderService.cleanupAuthSession(id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(404).json({ error: error.message });
   }
-  cleanupAuthSession(id);
-  res.json({ success: true });
 });
 
 // Retrieve saved authentication configuration
 app.get("/api/auth/config", async (req, res) => {
   try {
-    let config = { authMode: "authenticated", deviceCode: null, authenticated: false };
-    
-    if (fs.existsSync(AUTH_CONFIG_PATH)) {
-      const content = await fsp.readFile(AUTH_CONFIG_PATH, "utf-8");
-      config = JSON.parse(content);
-    }
-    
+    const config = await authService.getServerAuthConfig();
     res.json(config);
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -1990,15 +2142,15 @@ app.get("/api/auth/config", async (req, res) => {
 app.post("/api/auth/config", async (req, res) => {
   try {
     const { authMode, deviceCode, authenticated } = req.body;
-    
+
     const config = {
       authMode: authMode || "authenticated",
       deviceCode: deviceCode || null,
       authenticated: authenticated || false,
       lastUpdated: new Date().toISOString()
     };
-    
-    await fsp.writeFile(AUTH_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+
+    await authService.saveServerAuthConfig(config);
     res.json({ success: true, config });
   } catch (error) {
     res.status(500).json({ error: formatError(error) });
@@ -2021,7 +2173,7 @@ app.post("/api/auth/start-device-flow", async (req, res) => {
       lastUpdated: new Date().toISOString()
     };
     
-    await fsp.writeFile(AUTH_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+    await authService.saveServerAuthConfig(config);
     
     res.json({
       success: true,
@@ -2040,11 +2192,11 @@ app.post("/api/auth/start-device-flow", async (req, res) => {
 });
 
 // ============ TRANSLATION FILES ENDPOINT ============
-// Middleware to serve translation files WITHOUT authentication (MUST come before authMiddleware)
+// Middleware to serve translation files WITHOUT authentication (MUST come before auth middleware)
 app.use("/translations", express.static(path.join(__dirname, "public", "translations")));
 
 // Aplicar middleware de autenticación DESPUÉS de definir todas las rutas
-app.use(authMiddleware);
+app.use(authService.middleware);
 
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -2075,7 +2227,7 @@ app.listen(PORT, () => {
   console.log(`Server is listening on http://localhost:${PORT}`);
   console.log(`Panel web activo en http://localhost:${PORT}`);
   console.log(`Archivo de log: ${LOG_FILE}`);
-  initDiscordBot().catch(err => 
+  discordService.initBot().catch((err) =>
     console.error("[Discord] Error al inicializar bot:", err.message)
   );
 });
