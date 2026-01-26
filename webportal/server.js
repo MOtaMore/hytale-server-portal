@@ -294,7 +294,11 @@ function rejectHiddenPath(relPath) {
 
 function runScript(scriptPath) {
   return new Promise((resolve, reject) => {
-    execFile("bash", [scriptPath], { cwd: BASE_DIR }, (err, stdout, stderr) => {
+    // Cross-platform: use cmd.exe on Windows, bash on Linux/Mac
+    const shell = IS_WINDOWS ? "cmd.exe" : "bash";
+    const args = IS_WINDOWS ? ["/c", scriptPath] : [scriptPath];
+    
+    execFile(shell, args, { cwd: BASE_DIR }, (err, stdout, stderr) => {
       if (err) {
         reject(new Error(stderr || stdout || err.message));
         return;
@@ -306,8 +310,10 @@ function runScript(scriptPath) {
 
 function getScreenStatus() {
   if (IS_WINDOWS) {
+    // On Windows, rely on serverProcess tracking
     return Promise.resolve({ running: isServerRunning(), raw: "" });
   }
+  // On Linux/Mac, use screen command
   return new Promise((resolve) => {
     exec("screen -list", (err, stdout) => {
       if (err) {
@@ -654,7 +660,66 @@ function parseSizeToBytes(value, unit) {
   return value;
 }
 
+async function findJavaProcessWindows() {
+  // Windows: Use tasklist to find java.exe processes
+  return new Promise((resolve) => {
+    exec('tasklist /FI "IMAGENAME eq java.exe" /FO LIST /V', (err, stdout) => {
+      if (err || !stdout.trim()) return resolve(null);
+      
+      // Parse tasklist output to find PID
+      // Format: "PID                     : 1234"
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        const match = line.match(/PID\s+:\s+(\d+)/);
+        if (match) {
+          return resolve(Number(match[1]));
+        }
+      }
+      resolve(null);
+    });
+  });
+}
+
+async function findJavaProcessUnix(jarName) {
+  // Unix/Linux/Mac: Use ps command
+  const pattern = jarName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  // Attempt 1: Find Java process specifically
+  const byJava = await new Promise((resolve) => {
+    exec(`ps -eo pid,comm,cmd | grep -E "^[[:space:]]*[0-9]+[[:space:]]+java[[:space:]]" | grep "${pattern}" | awk '{print $1}' | head -n 1`, (err, stdout) => {
+      if (err || !stdout.trim()) return resolve(null);
+      const pid = Number(stdout.trim());
+      resolve(Number.isFinite(pid) ? pid : null);
+    });
+  });
+
+  if (byJava) return byJava;
+
+  // Attempt 2: Find by base directory
+  const byDir = await new Promise((resolve) => {
+    exec(`ps -eo pid,comm,cmd | grep -E "^[[:space:]]*[0-9]+[[:space:]]+java[[:space:]]" | grep "${BASE_DIR}" | awk '{print $1}' | head -n 1`, (err, stdout) => {
+      if (err || !stdout.trim()) return resolve(null);
+      const pid = Number(stdout.trim());
+      resolve(Number.isFinite(pid) ? pid : null);
+    });
+  });
+
+  if (byDir) return byDir;
+
+  // Attempt 3: Search by memory parameters
+  const byMemory = await new Promise((resolve) => {
+    exec(`ps -eo pid,comm,cmd | grep -E "^[[:space:]]*[0-9]+[[:space:]]+java[[:space:]]" | grep -E "(Xmx64G|Xmx32G)" | grep -v grep | awk '{print $1}' | head -n 1`, (err, stdout) => {
+      if (err || !stdout.trim()) return resolve(null);
+      const pid = Number(stdout.trim());
+      resolve(Number.isFinite(pid) ? pid : null);
+    });
+  });
+
+  return byMemory;
+}
+
 async function getServerProcessUsage(jarName) {
+  // First try: Use tracked process (most reliable)
   if (isServerRunning() && serverProcess?.pid) {
     try {
       const stats = await pidusage(serverProcess.pid);
@@ -664,45 +729,25 @@ async function getServerProcessUsage(jarName) {
     }
   }
 
-  const pattern = jarName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  // Attempt 1: Find Java process specifically (exclude screen and bash wrappers)
-  const byJava = await new Promise((resolve) => {
-    exec(`ps -eo pid,comm,cmd | grep -E "^[[:space:]]*[0-9]+[[:space:]]+java[[:space:]]" | grep "${pattern}" | awk '{print $1}' | head -n 1`, (err, stdout) => {
-      if (err || !stdout.trim()) return resolve(null);
-      const pid = Number(stdout.trim());
-      resolve(Number.isFinite(pid) ? pid : null);
-    });
-  });
-
-  // Attempt 2: Find by base directory + actual Java command
-  const byDir = await new Promise((resolve) => {
-    exec(`ps -eo pid,comm,cmd | grep -E "^[[:space:]]*[0-9]+[[:space:]]+java[[:space:]]" | grep "${BASE_DIR}" | awk '{print $1}' | head -n 1`, (err, stdout) => {
-      if (err || !stdout.trim()) return resolve(null);
-      const pid = Number(stdout.trim());
-      resolve(Number.isFinite(pid) ? pid : null);
-    });
-  });
-
-  // Attempt 3: Search specifically by characteristic memory parameters
-  const byMemory = await new Promise((resolve) => {
-    exec(`ps -eo pid,comm,cmd | grep -E "^[[:space:]]*[0-9]+[[:space:]]+java[[:space:]]" | grep -E "(Xmx64G|Xmx32G)" | grep -v grep | awk '{print $1}' | head -n 1`, (err, stdout) => {
-      if (err || !stdout.trim()) return resolve(null);
-      const pid = Number(stdout.trim());
-      resolve(Number.isFinite(pid) ? pid : null);
-    });
-  });
-
-  const pid = byJava || byDir || byMemory;
-  if (!pid) return null;
-
-  // Attempt 1: Use /proc directly (most reliable method)
-  const procStats = await getProcessStatsFromProc(pid);
-  if (procStats) {
-    return { pid, ...procStats };
+  // Second try: Find Java process based on platform
+  let pid;
+  if (IS_WINDOWS) {
+    pid = await findJavaProcessWindows();
+  } else {
+    pid = await findJavaProcessUnix(jarName);
   }
 
-  // Fallback: usar pidusage
+  if (!pid) return null;
+
+  // Third try: Use /proc directly on Linux (most reliable)
+  if (!IS_WINDOWS) {
+    const procStats = await getProcessStatsFromProc(pid);
+    if (procStats) {
+      return { pid, ...procStats };
+    }
+  }
+
+  // Fallback: Use pidusage library (works on all platforms)
   try {
     const stats = await pidusage(pid);
     return { pid, ...stats };
