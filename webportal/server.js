@@ -82,42 +82,40 @@ else {
   RESOURCE_BASE_DIR = path.resolve(__dirname, "resources", "HytaleServer");
 }
 
-// Carpeta principal del servidor en Documents/Documentos
-const BASE_DIR = path.join(DOCUMENTS_DIR, "HytaleServer");
+// BASE_DIR: usa directamente los recursos empaquetados en la App (scripts, downloaders)
+const BASE_DIR = RESOURCE_BASE_DIR;
+
+// DATA_DIR: directorio escribible para datos generados (server.jar, logs, config, backups, etc.)
+const DATA_DIR = path.join(DOCUMENTS_DIR, "HytaleServerData");
+
 const START_SCRIPT = path.join(BASE_DIR, IS_WINDOWS ? "start-server.bat" : "start-server.sh");
 const STOP_SCRIPT = path.join(BASE_DIR, IS_WINDOWS ? "stop-server.bat" : "stop-server.sh");
 const SCREEN_NAME = "HytaleServer";
-const CONFIG_PATH = path.join(BASE_DIR, "config.json");
+const CONFIG_PATH = path.join(DATA_DIR, "config.json");
 const TOKEN_TTL_MS = Number(process.env.TOKEN_TTL_MS || 1000 * 60 * 60 * 8);
 const DISCORD_CONFIG_PATH = path.join(USER_DATA_DIR, "discord-config.json");
 
 // Función para resolver dinámicamente la ruta del downloader
-// Busca primero en BASE_DIR (directorio de datos del usuario) y luego en RESOURCE_BASE_DIR (empaquetado)
 function resolveDownloaderPath() {
   const downloaderFileName = IS_WINDOWS
     ? "hytale-downloader-windows-amd64.exe"
     : "hytale-downloader-linux-amd64";
 
-  const userPath = path.join(BASE_DIR, downloaderFileName);
   const resourcePath = path.join(RESOURCE_BASE_DIR, downloaderFileName);
-
-  if (fs.existsSync(userPath)) {
-    return { path: userPath, source: "user" };
-  }
 
   if (fs.existsSync(resourcePath)) {
     return { path: resourcePath, source: "resource" };
   }
 
-  // Fallback preferido (aunque no exista) es BASE_DIR
-  return { path: userPath, source: "user" };
+  // Si no existe en recursos (no debería pasar), retornar la ruta esperada
+  return { path: resourcePath, source: "resource" };
 }
 
 // Conservamos esta constante para logs iniciales; el resto del código usa resolveDownloaderPath()
 const DOWNLOADER_PATH = resolveDownloaderPath().path;
 const AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, ".auth-secure");
 const SERVER_AUTH_CONFIG_PATH = path.join(USER_DATA_DIR, "server-auth.json");
-const DOWNLOAD_STATUS_PATH = path.join(BASE_DIR, ".download-status.json");
+const DOWNLOAD_STATUS_PATH = path.join(DATA_DIR, ".download-status.json");
 const SETUP_CONFIG_PATH = path.join(USER_DATA_DIR, "setup-config.json");
 const DOWNLOADER_AUTH_SESSIONS = new Map();
 
@@ -201,90 +199,29 @@ async function ensureBaseDir() {
     console.log("[Init] USER_DATA_DIR:", USER_DATA_DIR);
     console.log("[Init] DOCUMENTS_DIR:", DOCUMENTS_DIR);
     console.log("[Init] RESOURCE_BASE_DIR:", RESOURCE_BASE_DIR);
-    console.log("[Init] BASE_DIR:", BASE_DIR);
+    console.log("[Init] BASE_DIR (scripts/downloaders):", BASE_DIR);
+    console.log("[Init] DATA_DIR (datos del servidor):", DATA_DIR);
     
-    await fsp.mkdir(BASE_DIR, { recursive: true });
-    console.log("[Init] ✓ BASE_DIR creada:", BASE_DIR);
+    // Crear directorio de datos si no existe
+    await fsp.mkdir(DATA_DIR, { recursive: true });
+    console.log("[Init] ✓ DATA_DIR creada:", DATA_DIR);
 
-    const filesToCopy = IS_WINDOWS
-      ? ["hytale-downloader-windows-amd64.exe", "start-server.bat", "stop-server.bat"]
-      : ["hytale-downloader-linux-amd64", "start-server.sh", "stop-server.sh"];
-
-    const marker = path.join(BASE_DIR, ".initialized");
-    if (fs.existsSync(marker)) {
-      console.log("[Init] Ya inicializado previamente");
-      const resolved = resolveDownloaderPath();
-      console.log("[Init] DOWNLOADER_PATH:", resolved.path, "(source:", resolved.source, ")");
-      console.log("[Init] Downloader existe:", fs.existsSync(resolved.path) ? "✓ SÍ" : "✗ NO");
-
-      // Reponer archivos que falten desde RESOURCE_BASE_DIR
-      const downloaderFileName = IS_WINDOWS
-        ? "hytale-downloader-windows-amd64.exe"
-        : "hytale-downloader-linux-amd64";
-      const userPath = path.join(BASE_DIR, downloaderFileName);
-      const resourcePath = path.join(RESOURCE_BASE_DIR, downloaderFileName);
-      if (!fs.existsSync(userPath)) {
-        if (fs.existsSync(resourcePath)) {
-          console.log("[Init] Downloader faltante en BASE_DIR, copiando desde recursos empaquetados...");
-          await fsp.mkdir(BASE_DIR, { recursive: true });
-          await fsp.copyFile(resourcePath, userPath);
-          if (!IS_WINDOWS) {
-            await fsp.chmod(userPath, 0o755);
-          }
-          console.log("[Init] ✓ Downloader copiado en:", userPath);
-        } else {
-          console.warn("[Init] ⚠ Downloader NO ENCONTRADO en recursos ni en BASE_DIR");
-          console.warn("[Init] Por favor, copia manualmente el downloader a:", userPath);
-        }
-      }
-
-      // Reponer scripts y downloader que falten
-      for (const file of filesToCopy) {
-        const sourcePath = path.join(RESOURCE_BASE_DIR, file);
-        const destPath = path.join(BASE_DIR, file);
-        if (!fs.existsSync(destPath) && fs.existsSync(sourcePath)) {
-          console.log(`[Init] Restaurando ${file} en BASE_DIR...`);
-          await fsp.copyFile(sourcePath, destPath);
-          if (!IS_WINDOWS && (file.includes("downloader") || file.endsWith(".sh"))) {
-            await fsp.chmod(destPath, 0o755);
-          }
-        }
-      }
-      return;
+    // Verificar que los recursos empaquetados existen
+    if (!fs.existsSync(RESOURCE_BASE_DIR)) {
+      console.error("[Init] ERROR: Recursos empaquetados no encontrados en:", RESOURCE_BASE_DIR);
+      throw new Error("Recursos de la aplicación no encontrados");
     }
 
-    // Copiar recursos iniciales del directorio empaquetado si existen
-    console.log("[Init] Verificando recursos en:", RESOURCE_BASE_DIR);
-    if (fs.existsSync(RESOURCE_BASE_DIR)) {
-      console.log("[Init] Copiando recursos desde:", RESOURCE_BASE_DIR);
-      
-      for (const file of filesToCopy) {
-        const sourcePath = path.join(RESOURCE_BASE_DIR, file);
-        const destPath = path.join(BASE_DIR, file);
-        
-        if (fs.existsSync(sourcePath)) {
-          console.log(`[Init] Copiando ${file}...`);
-          await fsp.copyFile(sourcePath, destPath);
-          
-          // Dar permisos de ejecución en sistemas Unix
-          if (!IS_WINDOWS && (file.includes("downloader") || file.endsWith(".sh"))) {
-            await fsp.chmod(destPath, 0o755);
-          }
-          console.log(`[Init] ✓ ${file} copiado`);
-        } else {
-          console.warn(`[Init] ⚠ ${file} no encontrado en ${RESOURCE_BASE_DIR}`);
-        }
-      }
-    } else {
-      console.warn("[Init] ADVERTENCIA: Directorio de recursos no encontrado en:", RESOURCE_BASE_DIR);
-      console.warn("[Init] Por favor, asegúrate de que los archivos del servidor estén en:", BASE_DIR);
-    }
-
-    await fsp.writeFile(marker, "ok", "utf-8");
-    console.log("[Init] Directorio base inicializado correctamente");
     const resolved = resolveDownloaderPath();
     console.log("[Init] DOWNLOADER_PATH:", resolved.path, "(source:", resolved.source, ")");
     console.log("[Init] Downloader existe:", fs.existsSync(resolved.path) ? "✓ SÍ" : "✗ NO");
+    
+    if (!fs.existsSync(resolved.path)) {
+      console.error("[Init] ERROR: Downloader no encontrado en:", resolved.path);
+      throw new Error("Downloader no encontrado en recursos empaquetados");
+    }
+
+    console.log("[Init] ✓ Inicialización completada - usando recursos directamente desde la App");
   } catch (error) {
     console.error("[Init] Error preparando directorio base:", error.message);
     console.error("[Init] Stack:", error.stack);
@@ -392,9 +329,9 @@ const upload = multer({
 });
 
 function resolveSafe(relPath) {
-  const target = path.resolve(BASE_DIR, relPath || ".");
-  if (target === BASE_DIR) return target;
-  if (!target.startsWith(BASE_DIR + path.sep)) {
+  const target = path.resolve(DATA_DIR, relPath || ".");
+  if (target === DATA_DIR) return target;
+  if (!target.startsWith(DATA_DIR + path.sep)) {
     throw new Error("Ruta inválida");
   }
   return target;
@@ -486,7 +423,7 @@ async function readStartConfig() {
 }
 
 async function readServerConfig() {
-  const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
+  const SERVER_CONFIG_PATH = path.join(DATA_DIR, "server-config.json");
   try {
     if (fs.existsSync(SERVER_CONFIG_PATH)) {
       const cfg = JSON.parse(await fsp.readFile(SERVER_CONFIG_PATH, "utf8"));
@@ -504,7 +441,7 @@ async function readServerConfig() {
 
 function getServerLogStream() {
   if (!serverLogStream) {
-    const logPath = path.join(BASE_DIR, "server.log");
+    const logPath = path.join(DATA_DIR, "server.log");
     serverLogStream = fs.createWriteStream(logPath, { flags: "a" });
   }
   return serverLogStream;
@@ -535,7 +472,7 @@ async function startServerProcessNode() {
 
   const { ramMin, ramMax } = await readServerConfig();
   const { jarName } = await readStartConfig();
-  const jarPath = path.join(BASE_DIR, jarName);
+  const jarPath = path.join(DATA_DIR, jarName);
   if (!fs.existsSync(jarPath)) {
     throw new Error(`Server jar not found at ${jarPath}`);
   }
@@ -548,7 +485,7 @@ async function startServerProcessNode() {
   ];
 
   const child = spawn(javaPath, args, {
-    cwd: BASE_DIR,
+    cwd: DATA_DIR,
     env: {
       ...process.env,
       JAVA_TOOL_OPTIONS: undefined
@@ -720,7 +657,7 @@ async function resolveBackupDirectory() {
 
   if (!candidate) {
     const dataDisk = await findDataDisk();
-    candidate = dataDisk || path.join(BASE_DIR, "backups");
+    candidate = dataDisk || path.join(DATA_DIR, "backups");
   }
 
   const absolutePath = path.isAbsolute(candidate)
@@ -819,9 +756,9 @@ async function findJavaProcessUnix(jarName) {
 
   if (byJava) return byJava;
 
-  // Attempt 2: Find by base directory
+  // Attempt 2: Find by data directory
   const byDir = await new Promise((resolve) => {
-    exec(`ps -eo pid,comm,cmd | grep -E "^[[:space:]]*[0-9]+[[:space:]]+java[[:space:]]" | grep "${BASE_DIR}" | awk '{print $1}' | head -n 1`, (err, stdout) => {
+    exec(`ps -eo pid,comm,cmd | grep -E "^[[:space:]]*[0-9]+[[:space:]]+java[[:space:]]" | grep "${DATA_DIR}" | awk '{print $1}' | head -n 1`, (err, stdout) => {
       if (err || !stdout.trim()) return resolve(null);
       const pid = Number(stdout.trim());
       resolve(Number.isFinite(pid) ? pid : null);
@@ -1292,33 +1229,33 @@ class BackupService {
       throw new Error("Backup no encontrado");
     }
 
-    const tempKeepDir = path.join(BASE_DIR, ".temp_keep_backup");
+    // Temporalmente guardar credenciales si existen
+    const tempKeepDir = path.join(DATA_DIR, ".temp_keep_backup");
     await fsp.mkdir(tempKeepDir, { recursive: true });
     const keepNames = [
-      "hytale-downloader-linux-amd64",
-      "hytale-downloader-windows-amd64.exe",
       ".hytale-downloader-credentials.json"
     ];
 
-    const keepFiles = (await fsp.readdir(BASE_DIR))
-      .filter((f) => f.endsWith(".sh") || keepNames.includes(f))
-      .map((f) => path.join(BASE_DIR, f));
+    const keepFiles = (await fsp.readdir(DATA_DIR).catch(() => []))
+      .filter((f) => keepNames.includes(f))
+      .map((f) => path.join(DATA_DIR, f));
 
     for (const keepFile of keepFiles) {
       const fileName = path.basename(keepFile);
       await fsp.copyFile(keepFile, path.join(tempKeepDir, fileName)).catch(() => {});
     }
 
-    await fsp.rm(BASE_DIR, { recursive: true, force: true });
-    await fsp.mkdir(BASE_DIR, { recursive: true });
+    // Limpiar solo DATA_DIR (no BASE_DIR que tiene los scripts)
+    await fsp.rm(DATA_DIR, { recursive: true, force: true });
+    await fsp.mkdir(DATA_DIR, { recursive: true });
 
     const zip = new AdmZip(backupPath);
-    zip.extractAllTo(BASE_DIR, true);
+    zip.extractAllTo(DATA_DIR, true);
 
     const restoredKeeps = await fsp.readdir(tempKeepDir).catch(() => []);
     for (const fileName of restoredKeeps) {
       const from = path.join(tempKeepDir, fileName);
-      const to = path.join(BASE_DIR, fileName);
+      const to = path.join(DATA_DIR, fileName);
       await fsp.copyFile(from, to).catch(() => {});
     }
 
@@ -1378,7 +1315,7 @@ class DownloaderService {
       if (isExecutable) {
         try {
           const versionOutput = await new Promise((resolve, reject) => {
-            exec(`"${downloaderPath}" -version`, { cwd: BASE_DIR }, (err, stdout) => {
+            exec(`"${downloaderPath}" -version`, { cwd: DATA_DIR }, (err, stdout) => {
               if (err) reject(err);
               else resolve(stdout.trim());
             });
@@ -1386,7 +1323,7 @@ class DownloaderService {
           version = versionOutput;
 
           const gameVersionOutput = await new Promise((resolve, reject) => {
-            exec(`"${downloaderPath}" -print-version`, { cwd: BASE_DIR, timeout: 10000 }, (err, stdout) => {
+            exec(`"${downloaderPath}" -print-version`, { cwd: DATA_DIR, timeout: 10000 }, (err, stdout) => {
               if (err) reject(err);
               else resolve(stdout.trim());
             });
@@ -1398,11 +1335,11 @@ class DownloaderService {
       }
     }
 
-    const serverJarExists = fs.existsSync(path.join(BASE_DIR, "HytaleServer.jar"));
-    const assetsExists = fs.existsSync(path.join(BASE_DIR, "Assets.zip"));
+    const serverJarExists = fs.existsSync(path.join(DATA_DIR, "HytaleServer.jar"));
+    const assetsExists = fs.existsSync(path.join(DATA_DIR, "Assets.zip"));
     const isInstalled = serverJarExists && assetsExists;
 
-    const credentialsPath = path.join(BASE_DIR, ".hytale-downloader-credentials.json");
+    const credentialsPath = path.join(DATA_DIR, ".hytale-downloader-credentials.json");
     let isAuthenticated = false;
     try {
       if (fs.existsSync(credentialsPath)) {
@@ -1448,7 +1385,7 @@ class DownloaderService {
       await fsp.chmod(downloaderPath, 0o755);
     }
 
-    exec(`"${downloaderPath}"`, { cwd: BASE_DIR }, async (err, stdout, stderr) => {
+    exec(`"${downloaderPath}"`, { cwd: DATA_DIR }, async (err, stdout, stderr) => {
       if (err) {
         console.error("[Downloader] Error:", stderr || err.message);
       } else {
@@ -1495,7 +1432,7 @@ class DownloaderService {
     }
 
     const session = this.createAuthSession();
-    const child = spawn(downloaderPath, [], { cwd: BASE_DIR });
+    const child = spawn(downloaderPath, [], { cwd: DATA_DIR });
     session.child = child;
     session.status = "waiting";
 
@@ -1691,13 +1628,13 @@ function parseDeviceFlowOutput(line) {
 }
 
 async function findDownloadedZip() {
-  const entries = await fsp.readdir(BASE_DIR, { withFileTypes: true });
+  const entries = await fsp.readdir(DATA_DIR, { withFileTypes: true });
   const zips = [];
   for (const entry of entries) {
     if (!entry.isFile()) continue;
     if (!entry.name.toLowerCase().endsWith(".zip")) continue;
     if (entry.name === "Assets.zip") continue;
-    const full = path.join(BASE_DIR, entry.name);
+    const full = path.join(DATA_DIR, entry.name);
     const stat = await fsp.stat(full);
     zips.push({ full, mtime: stat.mtimeMs, size: stat.size });
   }
@@ -1709,7 +1646,7 @@ async function findDownloadedZip() {
 async function unzipAndCleanup(zipPath) {
   try {
     await new Promise((resolve, reject) => {
-      execFile("unzip", ["-qo", zipPath, "-d", BASE_DIR], (err, stdout, stderr) => {
+      execFile("unzip", ["-qo", zipPath, "-d", DATA_DIR], (err, stdout, stderr) => {
         if (err) {
           reject(new Error(stderr || stdout || err.message));
           return;
@@ -1718,13 +1655,13 @@ async function unzipAndCleanup(zipPath) {
       });
     });
 
-    // If extraction created a Server/ folder, move its contents to BASE_DIR
-    const nestedServer = path.join(BASE_DIR, "Server");
+    // If extraction created a Server/ folder, move its contents to DATA_DIR
+    const nestedServer = path.join(DATA_DIR, "Server");
     if (fs.existsSync(nestedServer)) {
       const entries = await fsp.readdir(nestedServer);
       for (const entry of entries) {
         const from = path.join(nestedServer, entry);
-        const to = path.join(BASE_DIR, entry);
+        const to = path.join(DATA_DIR, entry);
         await fsp.rename(from, to).catch(async () => {
           // si existe, eliminar destino y reintentar
           await fsp.rm(to, { recursive: true, force: true });
@@ -1734,10 +1671,10 @@ async function unzipAndCleanup(zipPath) {
       await fsp.rm(nestedServer, { recursive: true, force: true });
     }
 
-    // Delete start.* scripts (sh/bat) that came with the zip file
+    // Los scripts start.* que vienen en el ZIP no son necesarios, usamos los de BASE_DIR
     const startCandidates = ["start.sh", "start.bat", "StartServer.sh", "StartServer.bat", "start-server.bat"];
     for (const candidate of startCandidates) {
-      const target = path.join(BASE_DIR, candidate);
+      const target = path.join(DATA_DIR, candidate);
       if (fs.existsSync(target)) {
         await fsp.unlink(target).catch(() => {});
       }
@@ -2175,7 +2112,7 @@ app.post("/api/discord/test", async (req, res) => {
 // SERVER CONFIGURATION ROUTES
 // =============================================================================
 
-const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
+const SERVER_CONFIG_PATH = path.join(DATA_DIR, "server-config.json");
 
 // ============ SERVER CONFIGURATION ENDPOINTS ============
 // Retrieve server configuration (CPU threads and RAM settings)
@@ -2184,7 +2121,6 @@ const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
       const javaPath = await findJavaExecutable();
       const resolved = resolveDownloaderPath();
       const downloader = await downloaderExists();
-      const userCandidate = path.join(BASE_DIR, IS_WINDOWS ? "hytale-downloader-windows-amd64.exe" : "hytale-downloader-linux-amd64");
       const resourceCandidate = path.join(RESOURCE_BASE_DIR, IS_WINDOWS ? "hytale-downloader-windows-amd64.exe" : "hytale-downloader-linux-amd64");
       res.json({
         platform: IS_WINDOWS ? "windows" : "linux",
@@ -2196,9 +2132,8 @@ const SERVER_CONFIG_PATH = path.join(BASE_DIR, "server-config.json");
         diagnostics: {
           documentsDir: DOCUMENTS_DIR,
           baseDir: BASE_DIR,
+          dataDir: DATA_DIR,
           resourceBaseDir: RESOURCE_BASE_DIR,
-          userPath: userCandidate,
-          userExists: fs.existsSync(userCandidate),
           resourcePath: resourceCandidate,
           resourceExists: fs.existsSync(resourceCandidate)
         }
@@ -2233,7 +2168,7 @@ app.post("/api/server/config", async (req, res) => {
 // BACKUP CONFIGURATION ROUTES
 // =============================================================================
 
-const BACKUP_CONFIG_PATH = path.join(BASE_DIR, "backup-config.json");
+const BACKUP_CONFIG_PATH = path.join(DATA_DIR, "backup-config.json");
 
 // Retrieve backup configuration (location and settings)
 app.get("/api/backup/config", async (req, res) => {

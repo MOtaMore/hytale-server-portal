@@ -95,13 +95,9 @@ screen -dmS "$SCREEN_NAME" bash -c "
     taskset -c $CPU_SET java \
         -Xms$XMS \
         -Xmx$XMX \
-        -XX:+UseG1GC \
-        -XX:MaxGCPauseMillis=200 \
         -XX:+AlwaysPreTouch \
-        -XX:+UseStringDeduplication \
         -XX:+UnlockExperimentalVMOptions \
         -XX:ActiveProcessorCount=$ACTIVE_PROCESSORS \
-        -XX:+ParallelRefProcEnabled \
         -jar '$SERVER_JAR' \
         --assets '$ASSETS_ZIP' 2>&1 | tee '$LOG_FILE'
 "
