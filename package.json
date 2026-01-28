@@ -2,6 +2,7 @@
   "name": "hytale-server-portal",
   "version": "2.0.0",
   "description": "Hytale Server Manager - Desktop application for managing Hytale servers",
+  "author": "MOtaMore <notuse@motamore.com>",
   "main": "dist/main/index.js",
   "homepage": "./",
   "scripts": {
@@ -28,7 +29,7 @@
     "archiver": "^6.0.0",
     "axios": "^1.6.0",
     "crypto-js": "^4.1.0",
-    "discord.js": "^14.13.0",
+    "discord.js": "^13.17.1",
     "extract-zip": "^2.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -42,8 +43,8 @@
     "concurrently": "^8.2.0",
     "copy-webpack-plugin": "^13.0.1",
     "css-loader": "^6.8.0",
-    "electron": "^27.0.0",
-    "electron-builder": "^24.6.4",
+    "electron": "^40.0.0",
+    "electron-builder": "^26.6.0",
     "electron-is-dev": "^2.0.0",
     "html-webpack-plugin": "^5.6.0",
     "style-loader": "^3.3.0",
@@ -52,7 +53,7 @@
     "wait-on": "^7.2.0",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.0",
-    "webpack-dev-server": "^4.15.0"
+    "webpack-dev-server": "^5.2.3"
   },
   "build": {
     "appId": "com.hytale.servermanager",

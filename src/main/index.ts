@@ -32,11 +32,19 @@ function createWindow() {
     icon: path.join(__dirname, '../../resources/icons/icon.png'),
   });
 
-  const startUrl = isDev
-    ? 'http://localhost:3000'
-    : `file://${path.join(__dirname, '../renderer/index.html')}`;
+  if (isDev) {
+    mainWindow.loadURL('http://localhost:3000');
+  } else {
+    const indexPath = path.join(__dirname, '../renderer/index.html');
+    mainWindow.loadFile(indexPath);
+  }
 
-  mainWindow.loadURL(startUrl);
+  // Manejar errores de carga
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorDescription);
+    console.error('__dirname:', __dirname);
+    console.error('Expected path:', path.join(__dirname, '../renderer/index.html'));
+  });
 
   if (isDev) {
     mainWindow.webContents.openDevTools();
@@ -228,6 +236,17 @@ function setupIPCListeners() {
       return result;
     } catch (error: any) {
       return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('dialog:open-files', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow!, {
+        properties: ['openFile', 'multiSelections'],
+      });
+      return result.filePaths;
+    } catch (error: any) {
+      return [];
     }
   });
 

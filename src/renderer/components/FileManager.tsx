@@ -186,42 +186,32 @@ export default function FileManager({ serverPath }: FileManagerProps) {
    */
   const handleUploadFiles = useCallback(async () => {
     try {
-      // Crear input de archivo temporal
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.multiple = true;
-      input.onchange = async (e: any) => {
-        const files = Array.from(e.target.files) as File[];
-        if (files.length === 0) return;
+      // Usar el dialog nativo de Electron para seleccionar archivos
+      const filePaths = await window.electron.dialog.openFiles();
+      if (!filePaths || filePaths.length === 0) return;
 
-        setIsLoading(true);
-        setError('');
+      setIsLoading(true);
+      setError('');
 
-        try {
-          // Obtener las rutas de los archivos seleccionados
-          const filePaths = files.map(f => f.path);
-          
-          // Llamar al backend para copiar los archivos
-          const result = await window.electron.files.upload(currentPath, filePaths);
+      try {
+        // Llamar al backend para copiar los archivos
+        const result = await window.electron.files.upload(currentPath, filePaths);
 
-          if (result.success || result.uploaded.length > 0) {
-            const uploadedCount = result.uploaded.length;
-            alert(`${uploadedCount} archivo(s) subido(s) exitosamente`);
-            loadFiles(currentPath);
-          } else if (result.failed.length > 0) {
-            const failedMsg = result.failed.map((f: any) => `${f.path}: ${f.error}`).join('\n');
-            setError(`Error al subir archivos:\n${failedMsg}`);
-          }
-        } catch (err: any) {
-          setError(err.message || 'Error al subir archivos');
-        } finally {
-          setIsLoading(false);
+        if (result.success || result.uploaded.length > 0) {
+          const uploadedCount = result.uploaded.length;
+          alert(`${uploadedCount} archivo(s) subido(s) exitosamente`);
+          loadFiles(currentPath);
+        } else if (result.failed.length > 0) {
+          const failedMsg = result.failed.map((f: any) => `${f.path}: ${f.error}`).join('\n');
+          setError(`Error al subir archivos:\n${failedMsg}`);
         }
-      };
-      
-      input.click();
+      } catch (err: any) {
+        setError(err.message || 'Error al subir archivos');
+      } finally {
+        setIsLoading(false);
+      }
     } catch (err: any) {
-      setError(err.message || 'Error al subir archivos');
+      setError(err.message || 'Error al seleccionar archivos');
     }
   }, [currentPath, loadFiles, t]);
 

@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('electron', {
   // Dialog
   dialog: {
     openDirectory: () => ipcRenderer.invoke('dialog:open-directory'),
+    openFiles: () => ipcRenderer.invoke('dialog:open-files'),
   },
 
   // File Manager
@@ -144,6 +145,7 @@ declare global {
       };
       dialog: {
         openDirectory: () => Promise<any>;
+        openFiles: () => Promise<string[]>;
       };
       files: {
         list: (dirPath: string) => Promise<any>;
