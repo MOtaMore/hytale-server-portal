@@ -1,6 +1,6 @@
 {
   "name": "hytale-server-portal",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Hytale Server Manager - Desktop application for managing Hytale servers",
   "main": "dist/main/index.js",
   "homepage": "./",
