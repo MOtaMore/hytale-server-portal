@@ -1,0 +1,370 @@
+/* File Manager - Gestor de Archivos */
+
+.file-manager {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 20px;
+  background: #1e1e1e;
+  border-radius: 8px;
+}
+
+.file-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #333;
+}
+
+.file-manager-header h2 {
+  color: #61dafb;
+  margin: 0;
+  font-size: 24px;
+}
+
+.btn-back {
+  padding: 8px 16px;
+  background: #333;
+  color: #fff;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-back:hover:not(:disabled) {
+  background: #444;
+  border-color: #61dafb;
+}
+
+.btn-back:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Mensaje de error */
+.error-message {
+  background: #ff4444;
+  color: white;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.error-icon {
+  font-size: 20px;
+}
+
+/* Contenido principal */
+.file-manager-content {
+  display: flex;
+  flex: 1;
+  gap: 20px;
+  overflow: hidden;
+}
+
+/* Lista de archivos */
+.file-list {
+  flex: 1;
+  background: #2a2a2a;
+  border-radius: 8px;
+  overflow-y: auto;
+  padding: 15px;
+  min-width: 300px;
+}
+
+.current-path {
+  background: #1a1a1a;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  color: #888;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.btn-upload {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  background: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.btn-upload:hover:not(:disabled) {
+  background: #357abd;
+  transform: translateY(-1px);
+}
+
+.btn-upload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.loading {
+  text-align: center;
+  color: #61dafb;
+  padding: 40px;
+  font-size: 16px;
+}
+
+.empty-message {
+  text-align: center;
+  color: #888;
+  padding: 40px;
+  font-size: 14px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #333;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+}
+
+.file-item:hover {
+  background: #3a3a3a;
+  border-color: #61dafb;
+}
+
+.file-item.selected {
+  background: #2a4a5a;
+  border-color: #61dafb;
+}
+
+.file-icon {
+  font-size: 32px;
+  flex-shrink: 0;
+}
+
+.file-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.file-meta {
+  color: #888;
+  font-size: 12px;
+  display: flex;
+  gap: 15px;
+}
+
+.btn-delete-small {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.2s;
+  padding: 4px;
+}
+
+.btn-delete-small:hover:not(:disabled) {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+.btn-delete-small:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Visor/Editor de archivos */
+.file-viewer {
+  flex: 1.5;
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #444;
+}
+
+.viewer-header h3 {
+  color: #61dafb;
+  margin: 0;
+  font-size: 18px;
+  word-break: break-all;
+}
+
+.btn-edit {
+  padding: 8px 16px;
+  background: #61dafb;
+  color: #000;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-edit:hover:not(:disabled) {
+  background: #4fb8d8;
+  transform: translateY(-1px);
+}
+
+.btn-edit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-save {
+  padding: 8px 16px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #45a049;
+  transform: translateY(-1px);
+}
+
+.btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-cancel {
+  padding: 8px 16px;
+  background: #666;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: #777;
+  transform: translateY(-1px);
+}
+
+.btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.file-content-editor {
+  flex: 1;
+  background: #1a1a1a;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 15px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  overflow-y: auto;
+}
+
+.file-content-editor:focus {
+  outline: none;
+  border-color: #61dafb;
+}
+
+.file-content-editor[readonly] {
+  background: #252525;
+  cursor: default;
+}
+
+.no-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+}
+
+.no-server-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: #888;
+  font-size: 16px;
+}
+
+/* Scrollbar personalizado */
+.file-list::-webkit-scrollbar,
+.file-content-editor::-webkit-scrollbar {
+  width: 8px;
+}
+
+.file-list::-webkit-scrollbar-track,
+.file-content-editor::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 4px;
+}
+
+.file-list::-webkit-scrollbar-thumb,
+.file-content-editor::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.file-list::-webkit-scrollbar-thumb:hover,
+.file-content-editor::-webkit-scrollbar-thumb:hover {
+  background: #61dafb;
+}
+
+/* Responsivo */
+@media (max-width: 1024px) {
+  .file-manager-content {
+    flex-direction: column;
+  }
+
+  .file-list {
+    min-height: 300px;
+  }
+
+  .file-viewer {
+    min-height: 400px;
+  }
+}
