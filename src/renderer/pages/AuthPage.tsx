@@ -3,6 +3,7 @@ import { I18nManager, Language } from '../../shared/i18n/I18nManager';
 import LanguageSelector from '../components/LanguageSelector';
 import LocalAccountSetup from '../components/LocalAccountSetup';
 import LoginForm from '../components/LoginForm';
+import RemoteLoginForm from '../components/RemoteLoginForm';
 import './AuthPage.css';
 
 interface AuthPageProps {
@@ -12,11 +13,14 @@ interface AuthPageProps {
 /**
  * Página de autenticación - Fase 0
  * Incluye selector de idioma y creación de cuenta local o login
+ * NUEVO: Soporte para login remoto
  */
 export default function AuthPage({ onAuthenticated }: AuthPageProps) {
+  const t = I18nManager.t.bind(I18nManager);
   const [currentLanguage, setCurrentLanguage] = useState<Language>('es');
   const [isLoading, setIsLoading] = useState(true);
   const [accountExists, setAccountExists] = useState(false);
+  const [loginMode, setLoginMode] = useState<'local' | 'remote'>('local');
 
   useEffect(() => {
     // Cargar el idioma guardado y verificar si existe cuenta
@@ -72,10 +76,31 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
 
         {/* Authentication Form Container */}
         <div className="auth-form-container">
-          {accountExists ? (
+          {/* Login Mode Selector (solo si ya existe cuenta) */}
+          {accountExists && (
+            <div className="login-mode-selector">
+              <button
+                className={`mode-btn ${loginMode === 'local' ? 'active' : ''}`}
+                onClick={() => setLoginMode('local')}
+              >
+                🏠 {t('auth.login_mode_local')}
+              </button>
+              <button
+                className={`mode-btn ${loginMode === 'remote' ? 'active' : ''}`}
+                onClick={() => setLoginMode('remote')}
+              >
+                🌐 {t('auth.login_mode_remote')}
+              </button>
+            </div>
+          )}
+
+          {/* Forms */}
+          {!accountExists ? (
+            <LocalAccountSetup onSuccess={handleAuthenticated} />
+          ) : loginMode === 'local' ? (
             <LoginForm onSuccess={handleAuthenticated} />
           ) : (
-            <LocalAccountSetup onSuccess={handleAuthenticated} />
+            <RemoteLoginForm onSuccess={handleAuthenticated} />
           )}
         </div>
       </div>

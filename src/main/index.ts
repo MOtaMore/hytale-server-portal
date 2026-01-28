@@ -10,9 +10,14 @@ import { FileManager } from '../shared/services/FileManager';
 import { BackupManager } from '../shared/services/BackupManager';
 import { ConfigManager } from '../shared/services/ConfigManager';
 import { DiscordManager } from '../shared/services/DiscordManager';
+import RemoteAccessManager from '../shared/services/RemoteAccessManager';
+import { PermissionsManager } from '../shared/services/PermissionsManager';
+import { RemoteSocketServer } from './RemoteSocketServer';
 
 let mainWindow: BrowserWindow | null = null;
 let discordManager: DiscordManager | null = null;
+let remoteAccessManager: RemoteAccessManager | null = null;
+let remoteSocketServer: RemoteSocketServer | null = null;
 
 /**
  * Crea la ventana principal de la aplicación
@@ -68,6 +73,35 @@ app.on('ready', () => {
   // Inicializar Discord Manager
   const appDataPath = app.getPath('userData');
   discordManager = new DiscordManager(appDataPath);
+  
+  // Inicializar Remote Access Manager
+  remoteAccessManager = RemoteAccessManager.initialize(appDataPath);
+  
+  // Inicializar Remote Socket Server con todos los handlers
+  const remoteConfig = remoteAccessManager.getConnectionConfig();
+  const serverPath = SecureStorageManager.getServerPath();
+  remoteSocketServer = new RemoteSocketServer(
+    remoteAccessManager,
+    {
+      serverManager: ServerManager.getInstance(),
+      configManager: new ConfigManager(serverPath || ''),
+      backupManager: BackupManager.getInstance(),
+      fileManager: FileManager,
+      discordManager: discordManager,
+    },
+    remoteConfig.port
+  );
+  
+  // Si el acceso remoto está habilitado, iniciar el servidor
+  if (remoteConfig.enabled) {
+    remoteSocketServer.start().then(success => {
+      if (success) {
+        console.log('[Main] Remote Socket Server started successfully');
+      } else {
+        console.error('[Main] Failed to start Remote Socket Server');
+      }
+    });
+  }
   
   createWindow();
   setupIPCListeners();
@@ -569,6 +603,180 @@ function setupIPCListeners() {
         throw new Error('Discord manager not initialized');
       }
       return await discordManager.notifyServerStatus(isOnline);
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  // IPC: Remote Access
+  ipcMain.handle('remote:get-config', async () => {
+    try {
+      if (!remoteAccessManager) {
+        throw new Error('Remote access manager not initialized');
+      }
+      return remoteAccessManager.getConnectionConfig();
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:set-enabled', async (event, enabled: boolean) => {
+    try {
+      if (!remoteAccessManager) {
+        throw new Error('Remote access manager not initialized');
+      }
+      remoteAccessManager.setRemoteAccessEnabled(enabled);
+      
+      // Iniciar o detener el servidor Socket.io según el estado
+      if (remoteSocketServer) {
+        if (enabled && !remoteSocketServer.isServerRunning()) {
+          const started = await remoteSocketServer.start();
+          if (!started) {
+            throw new Error('Failed to start remote socket server');
+          }
+          console.log('[Main] Remote Socket Server started');
+        } else if (!enabled && remoteSocketServer.isServerRunning()) {
+          await remoteSocketServer.stop();
+          console.log('[Main] Remote Socket Server stopped');
+        }
+      }
+      
+      return { success: true };
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:get-users', async () => {
+    try {
+      if (!remoteAccessManager) {
+        throw new Error('Remote access manager not initialized');
+      }
+      return remoteAccessManager.getRemoteUsers();
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:create-user', async (event, data: any) => {
+    try {
+      if (!remoteAccessManager) {
+        throw new Error('Remote access manager not initialized');
+      }
+      const { username, password, email, permissions } = data;
+      return await remoteAccessManager.createRemoteUser(username, password, permissions, email);
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:delete-user', async (event, userId: string) => {
+    try {
+      if (!remoteAccessManager) {
+        throw new Error('Remote access manager not initialized');
+      }
+      remoteAccessManager.deleteRemoteUser(userId);
+      return { success: true };
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:get-permissions', async () => {
+    try {
+      const permissionsManager = PermissionsManager.getInstance();
+      return permissionsManager.getAllPermissions();
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:get-preset-permissions', async (event, role: string) => {
+    try {
+      const permissionsManager = PermissionsManager.getInstance();
+      return permissionsManager.getPresetPermissions(role as any);
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:set-connection-methods', async (event, config: any) => {
+    try {
+      if (!remoteAccessManager) {
+        throw new Error('Remote access manager not initialized');
+      }
+      remoteAccessManager.setConnectionMethods(config);
+      
+      // Si cambió el puerto y el servidor está corriendo, reiniciarlo
+      if (remoteSocketServer && config.port && config.port !== remoteSocketServer.getPort()) {
+        const wasRunning = remoteSocketServer.isServerRunning();
+        
+        if (wasRunning) {
+          await remoteSocketServer.stop();
+        }
+        
+        remoteSocketServer.setPort(config.port);
+        
+        if (wasRunning) {
+          const started = await remoteSocketServer.start();
+          if (!started) {
+            console.error('[Main] Failed to restart remote socket server on new port');
+          } else {
+            console.log(`[Main] Remote Socket Server restarted on port ${config.port}`);
+          }
+        }
+      }
+      
+      return { success: true };
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:login', async (event, username: string, password: string) => {
+    try {
+      if (!remoteAccessManager) {
+        throw new Error('Remote access manager not initialized');
+      }
+      const token = await remoteAccessManager.authenticateRemoteUser(username, password);
+      const jwt = remoteAccessManager.createJWT(await remoteAccessManager.getRemoteUser(token.userId) as any);
+      return { success: true, token: jwt, userData: token };
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  // Nuevos handlers para Socket.io Server
+  ipcMain.handle('remote:get-server-status', async () => {
+    try {
+      if (!remoteSocketServer) {
+        return { 
+          running: false, 
+          clients: 0, 
+          port: 9999,
+          connectedClients: []
+        };
+      }
+      
+      return {
+        running: remoteSocketServer.isServerRunning(),
+        clients: remoteSocketServer.getConnectedClientsCount(),
+        port: remoteSocketServer.getPort(),
+        connectedClients: remoteSocketServer.getConnectedClients(),
+      };
+    } catch (error: any) {
+      throw new Error(error.message);
+    }
+  });
+
+  ipcMain.handle('remote:broadcast-event', async (event, eventName: string, data: any) => {
+    try {
+      if (!remoteSocketServer || !remoteSocketServer.isServerRunning()) {
+        throw new Error('Remote socket server not running');
+      }
+      
+      remoteSocketServer.broadcastEvent(eventName, data);
+      return { success: true };
     } catch (error: any) {
       throw new Error(error.message);
     }

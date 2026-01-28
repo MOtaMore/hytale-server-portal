@@ -92,6 +92,21 @@ contextBridge.exposeInMainWorld('electron', {
     notify: (isOnline: boolean) => ipcRenderer.invoke('discord:notify', isOnline),
   },
 
+  // Remote Access
+  remote: {
+    getConfig: () => ipcRenderer.invoke('remote:get-config'),
+    setEnabled: (enabled: boolean) => ipcRenderer.invoke('remote:set-enabled', enabled),
+    getUsers: () => ipcRenderer.invoke('remote:get-users'),
+    createUser: (data: any) => ipcRenderer.invoke('remote:create-user', data),
+    deleteUser: (userId: string) => ipcRenderer.invoke('remote:delete-user', userId),
+    getPermissions: () => ipcRenderer.invoke('remote:get-permissions'),
+    getPresetPermissions: (role: string) => ipcRenderer.invoke('remote:get-preset-permissions', role),
+    setConnectionMethods: (config: any) => ipcRenderer.invoke('remote:set-connection-methods', config),
+    login: (username: string, password: string) => ipcRenderer.invoke('remote:login', username, password),
+    getServerStatus: () => ipcRenderer.invoke('remote:get-server-status'),
+    broadcastEvent: (eventName: string, data: any) => ipcRenderer.invoke('remote:broadcast-event', eventName, data),
+  },
+
   // Helper to invoke any IPC channel
   invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
 
@@ -175,6 +190,19 @@ declare global {
         saveConfig: (config: any) => Promise<any>;
         test: () => Promise<any>;
         notify: (isOnline: boolean) => Promise<any>;
+      };
+      remote: {
+        getConfig: () => Promise<any>;
+        setEnabled: (enabled: boolean) => Promise<any>;
+        getUsers: () => Promise<any>;
+        createUser: (data: any) => Promise<any>;
+        deleteUser: (userId: string) => Promise<any>;
+        getPermissions: () => Promise<any>;
+        getPresetPermissions: (role: string) => Promise<any>;
+        setConnectionMethods: (config: any) => Promise<any>;
+        login: (username: string, password: string) => Promise<any>;
+        getServerStatus: () => Promise<any>;
+        broadcastEvent: (eventName: string, data: any) => Promise<any>;
       };
       invoke: (channel: string, ...args: any[]) => Promise<any>;
       on: (channel: string, callback: (data: any) => void) => () => void;

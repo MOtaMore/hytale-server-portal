@@ -6,6 +6,7 @@ import FileManager from '../components/FileManager';
 import { BackupPanel } from '../components/BackupPanel';
 import { ConfigPanel } from '../components/ConfigPanel';
 import { DiscordPanel } from '../components/DiscordPanel';
+import { RemoteAccessPanel } from '../components/RemoteAccessPanel';
 import './MainPage.css';
 
 interface MainPageProps {
@@ -18,7 +19,7 @@ interface MainPageProps {
  */
 export default function MainPage({ onLogout }: MainPageProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentPanel, setCurrentPanel] = useState<'server' | 'download' | 'files' | 'backup' | 'config' | 'discord'>('server');
+  const [currentPanel, setCurrentPanel] = useState<'server' | 'download' | 'files' | 'backup' | 'config' | 'discord' | 'remote'>('server');
   const [serverPath, setServerPath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -93,6 +94,12 @@ export default function MainPage({ onLogout }: MainPageProps) {
           >
             💬 {I18nManager.t('discord.title')}
           </button>
+          <button
+            className={`nav-item ${currentPanel === 'remote' ? 'active' : ''}`}
+            onClick={() => setCurrentPanel('remote')}
+          >
+            🌐 Acceso Remoto
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -129,6 +136,9 @@ export default function MainPage({ onLogout }: MainPageProps) {
           )}
           {currentPanel === 'discord' && (
             <DiscordPanel />
+          )}
+          {currentPanel === 'remote' && (
+            <RemoteAccessPanel t={I18nManager.t.bind(I18nManager)} />
           )}
         </div>
       </main>

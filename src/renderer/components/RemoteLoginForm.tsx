@@ -1,0 +1,210 @@
+/**
+ * RemoteLoginForm - Formulario de login para conexiones remotas
+ * Permite conectarse a otro servidor usando IP:Puerto o URL de túnel
+ */
+
+import React, { useState } from 'react';
+import { I18nManager } from '../../shared/i18n/I18nManager';
+import './RemoteLoginForm.css';
+
+interface RemoteLoginFormProps {
+  onSuccess: () => void;
+}
+
+export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
+  const t = I18nManager.t.bind(I18nManager);
+  const [connectionMethod, setConnectionMethod] = useState<'ip' | 'tunnel'>('ip');
+  const [ipAddress, setIpAddress] = useState('');
+  const [port, setPort] = useState('9999');
+  const [tunnelUrl, setTunnelUrl] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      // Validación
+      if (connectionMethod === 'ip') {
+        if (!ipAddress || !port) {
+          throw new Error(t('remote.error_ip_required'));
+        }
+        // Validación básica de IP
+        const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+        const ipv6Regex = /^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$/;
+        if (!ipRegex.test(ipAddress) && !ipv6Regex.test(ipAddress)) {
+          throw new Error(t('remote.error_invalid_ip'));
+        }
+        if (isNaN(Number(port)) || Number(port) < 1 || Number(port) > 65535) {
+          throw new Error(t('remote.error_invalid_port'));
+        }
+      } else {
+        if (!tunnelUrl) {
+          throw new Error(t('remote.error_tunnel_required'));
+        }
+        // Validación de URL
+        try {
+          new URL(tunnelUrl);
+        } catch {
+          throw new Error(t('remote.error_invalid_url'));
+        }
+      }
+
+      if (!username || !password) {
+        throw new Error(t('remote.error_credentials_required'));
+      }
+
+      // Construir la conexión
+      const connectionString = connectionMethod === 'ip' 
+        ? `${ipAddress}:${port}` 
+        : tunnelUrl;
+
+      // Intentar login remoto
+      const result = await window.electron.remote.login(username, password);
+      
+      if (result.success) {
+        // Guardar la sesión remota
+        localStorage.setItem('remoteSession', JSON.stringify({
+          connectionString,
+          token: result.token,
+          userData: result.userData,
+          timestamp: Date.now(),
+        }));
+
+        onSuccess();
+      } else {
+        throw new Error(result.message || 'Error al conectar');
+      }
+    } catch (err: any) {
+      setError(err.message || t('remote.error_connection'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <h2 className="auth-form-title">🌐 {t('remote.login_remote')}</h2>
+      <p className="auth-form-subtitle">
+        {t('remote.login_subtitle')}
+      </p>
+
+      {error && <div className="auth-form-error">{error}</div>}
+
+      <form className="auth-form" onSubmit={handleSubmit}>
+        {/* Selector de método de conexión */}
+        <div className="connection-method-selector">
+          <button
+            type="button"
+            className={`method-btn ${connectionMethod === 'ip' ? 'active' : ''}`}
+            onClick={() => setConnectionMethod('ip')}
+          >
+            📡 {t('remote.method_ip_direct')}
+          </button>
+          <button
+            type="button"
+            className={`method-btn ${connectionMethod === 'tunnel' ? 'active' : ''}`}
+            onClick={() => setConnectionMethod('tunnel')}
+          >
+            🔗 {t('remote.method_tunnel_direct')}
+          </button>
+        </div>
+
+        {/* Campos según método */}
+        {connectionMethod === 'ip' ? (
+          <div className="connection-fields">
+            <div className="form-group">
+              <label>{t('remote.ip_address')}</label>
+              <input
+                type="text"
+                placeholder={t('remote.ip_placeholder')}
+                value={ipAddress}
+                onChange={(e) => setIpAddress(e.target.value)}
+                disabled={loading}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label>{t('remote.port')}</label>
+              <input
+                type="text"
+                placeholder={t('remote.port_placeholder')}
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                disabled={loading}
+                required
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="connection-fields">
+            <div className="form-group">
+              <label>{t('remote.tunnel_url_label')}</label>
+              <input
+                type="text"
+                placeholder={t('remote.tunnel_placeholder_login')}
+                value={tunnelUrl}
+                onChange={(e) => setTunnelUrl(e.target.value)}
+                disabled={loading}
+                required
+              />
+              <small className="help-text">
+                {t('remote.tunnel_help')}
+              </small>
+            </div>
+          </div>
+        )}
+
+        {/* Credenciales */}
+        <div className="credentials-section">
+          <h3>{t('remote.credentials_title')}</h3>
+          <div className="form-group">
+            <label>{t('remote.username_label')}</label>
+            <input
+              type="text"
+              placeholder={t('remote.username_placeholder')}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              disabled={loading}
+              required
+              autoComplete="username"
+            />
+          </div>
+          <div className="form-group">
+            <label>{t('remote.password_label')}</label>
+            <input
+              type="password"
+              placeholder={t('remote.password_placeholder')}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={loading}
+              required
+              autoComplete="current-password"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          className="auth-form-submit"
+          disabled={loading}
+        >
+          {loading ? t('remote.connecting') : t('remote.connect_button')}
+        </button>
+
+        <div className="remote-info-box">
+          <strong>ℹ️ {t('remote.connection_info')}:</strong>
+          <ul>
+            <li>{t('remote.info_credentials')}</li>
+            <li>{t('remote.info_admin')}</li>
+            <li>{t('remote.info_expiry')}</li>
+          </ul>
+        </div>
+      </form>
+    </>
+  );
+}
