@@ -6,7 +6,7 @@ import FileManager from '../components/FileManager';
 import { BackupPanel } from '../components/BackupPanel';
 import { ConfigPanel } from '../components/ConfigPanel';
 import { DiscordPanel } from '../components/DiscordPanel';
-import { RemoteAccessPanel } from '../components/RemoteAccessPanel';
+import RemoteAccessPanel from '../components/RemoteAccessPanel';
 import './MainPage.css';
 
 interface MainPageProps {

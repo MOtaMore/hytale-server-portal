@@ -24,6 +24,11 @@ contextBridge.exposeInMainWorld('electron', {
     getLast: () => ipcRenderer.invoke('language:get-last'),
   },
 
+  // App
+  app: {
+    getResourcePath: (resourcePath: string) => ipcRenderer.invoke('app:get-resource-path', resourcePath),
+  },
+
   // Servidor
   server: {
     getPath: () => ipcRenderer.invoke('server:get-path'),
@@ -136,6 +141,9 @@ declare global {
         set: (language: string) => Promise<any>;
         getAvailable: () => Promise<Array<{ code: string; name: string }>>;
         getLast: () => Promise<string>;
+      };
+      app: {
+        getResourcePath: (resourcePath: string) => Promise<string>;
       };
       server: {
         getPath: () => Promise<string | null>;

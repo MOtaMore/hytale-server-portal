@@ -14,6 +14,9 @@ import RemoteAccessManager from '../shared/services/RemoteAccessManager';
 import { PermissionsManager } from '../shared/services/PermissionsManager';
 import { RemoteSocketServer } from './RemoteSocketServer';
 
+// Properly check if running in development
+const isDevMode = (isDev as any) === true || (isDev as any).default === true;
+
 let mainWindow: BrowserWindow | null = null;
 let discordManager: DiscordManager | null = null;
 let remoteAccessManager: RemoteAccessManager | null = null;
@@ -37,9 +40,11 @@ function createWindow() {
     icon: path.join(__dirname, '../../resources/icons/icon.png'),
   });
 
-  if (isDev) {
+  if (isDevMode) {
     mainWindow.loadURL('http://localhost:3000');
+    mainWindow.webContents.openDevTools();
   } else {
+    // En producción, la ruta relativa es correcta porque __dirname apunta a dist/main/
     const indexPath = path.join(__dirname, '../renderer/index.html');
     mainWindow.loadFile(indexPath);
   }
@@ -48,12 +53,9 @@ function createWindow() {
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Failed to load:', errorDescription);
     console.error('__dirname:', __dirname);
+    console.error('isDevMode:', isDevMode);
     console.error('Expected path:', path.join(__dirname, '../renderer/index.html'));
   });
-
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -194,6 +196,17 @@ function setupIPCListeners() {
 
   ipcMain.handle('language:get-last', async () => {
     return SecureStorageManager.getLastLanguage();
+  });
+
+  // IPC: Resources path
+  ipcMain.handle('app:get-resource-path', async (event, resourcePath: string) => {
+    if (isDevMode) {
+      // En desarrollo, usar ruta directa desde la raíz del proyecto
+      return path.join(__dirname, '../../resources', resourcePath);
+    } else {
+      // En producción, recursos están en resources/ junto a app.asar
+      return path.join(process.resourcesPath, resourcePath);
+    }
   });
 
   // IPC: Servidor

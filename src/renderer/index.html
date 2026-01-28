@@ -7,6 +7,18 @@
     <script>
       // Polyfill para global en renderer process
       window.global = window;
+      
+      // Debug: Log cuando el DOM está listo
+      console.log('HTML loaded, waiting for DOM...');
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('DOM Content Loaded');
+        console.log('Root element:', document.getElementById('root'));
+      });
+      
+      // Log global errors
+      window.addEventListener('error', (e) => {
+        console.error('Global error:', e.error);
+      });
     </script>
     <style>
       * {
