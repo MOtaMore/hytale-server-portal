@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 import './ServerControlPanel.css';
 
 interface ServerControlPanelProps {
   serverPath?: string;
   isRemoteMode?: boolean;
+  remoteSocket?: Socket | null;
 }
 
 interface ServerState {
@@ -19,13 +20,12 @@ interface ServerState {
  * Panel de control del servidor Hytale - Fase 1
  * Soporta modo local (IPC) y modo remoto (Socket.io)
  */
-export default function ServerControlPanel({ serverPath, isRemoteMode = false }: ServerControlPanelProps) {
+export default function ServerControlPanel({ serverPath, isRemoteMode = false, remoteSocket = null }: ServerControlPanelProps) {
   const [status, setStatus] = useState<string>('stopped');
   const [logs, setLogs] = useState<string[]>([]);
   const [command, setCommand] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentServerPath, setCurrentServerPath] = useState<string | null | undefined>(serverPath);
-  const [remoteSocket, setRemoteSocket] = useState<Socket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll a los logs más recientes
@@ -33,58 +33,60 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false }:
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // Conectar al socket remoto si está en modo remoto
+  // Configurar listeners del socket remoto si está en modo remoto
   useEffect(() => {
-    if (isRemoteMode) {
-      const remoteSessionStr = localStorage.getItem('remoteSession');
-      if (remoteSessionStr) {
-        try {
-          const remoteSession = JSON.parse(remoteSessionStr);
-          console.log('[ServerControlPanel] Connecting to remote server:', remoteSession.connectionString);
-          
-          const socket = io(remoteSession.connectionString, {
-            auth: { token: remoteSession.token },
-            transports: ['websocket', 'polling'],
-            reconnection: true,
-          });
+    if (isRemoteMode && remoteSocket) {
+      console.log('[ServerControlPanel] Setting up socket listeners');
 
-          socket.on('connect', () => {
-            console.log('[ServerControlPanel] Connected to remote server');
-            // Solicitar estado inicial
-            socket.emit('server:get-status', {}, (response: any) => {
-              if (response.success) {
-                setStatus(response.data.status);
-                setLogs(response.data.logs || []);
-              }
-            });
-          });
-
-          socket.on('server:status-changed', (data: any) => {
-            console.log('[ServerControlPanel] Status changed:', data);
-            setStatus(data.status);
-          });
-
-          socket.on('server:logs-updated', (data: any) => {
-            console.log('[ServerControlPanel] Logs updated');
-            setLogs(data.logs || []);
-          });
-
-          socket.on('disconnect', () => {
-            console.log('[ServerControlPanel] Disconnected from remote server');
-          });
-
-          setRemoteSocket(socket);
-
-          return () => {
-            console.log('[ServerControlPanel] Cleaning up socket connection');
-            socket.disconnect();
-          };
-        } catch (e) {
-          console.error('[ServerControlPanel] Error loading remote session:', e);
-        }
+      // Solicitar estado inicial si ya está conectado
+      if (remoteSocket.connected) {
+        remoteSocket.emit('server:get-status', {}, (response: any) => {
+          if (response.success) {
+            setStatus(response.data.status);
+            setLogs(response.data.logs || []);
+          }
+        });
       }
+
+      // Configurar listeners
+      const onStatusChanged = (data: any) => {
+        console.log('[ServerControlPanel] Status changed:', data);
+        setStatus(data.status);
+      };
+
+      const onLogsUpdated = (data: any) => {
+        console.log('[ServerControlPanel] Logs updated');
+        setLogs(data.logs || []);
+      };
+
+      const onConnect = () => {
+        console.log('[ServerControlPanel] Socket connected, fetching status');
+        remoteSocket.emit('server:get-status', {}, (response: any) => {
+          if (response.success) {
+            setStatus(response.data.status);
+            setLogs(response.data.logs || []);
+          }
+        });
+      };
+
+      remoteSocket.on('connect', onConnect);
+      remoteSocket.on('server:status-changed', onStatusChanged);
+      remoteSocket.on('server:logs-updated', onLogsUpdated);
+
+      // Si ya está conectado, cargar estado inicial
+      if (remoteSocket.connected) {
+        onConnect();
+      }
+
+      // Cleanup: remover solo los listeners
+      return () => {
+        console.log('[ServerControlPanel] Removing socket listeners');
+        remoteSocket.off('connect', onConnect);
+        remoteSocket.off('server:status-changed', onStatusChanged);
+        remoteSocket.off('server:logs-updated', onLogsUpdated);
+      };
     }
-  }, [isRemoteMode]);
+  }, [isRemoteMode, remoteSocket]);
 
   // Cargar ruta del servidor si no está disponible (solo modo local)
   useEffect(() => {

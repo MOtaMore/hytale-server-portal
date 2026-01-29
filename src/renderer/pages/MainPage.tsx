@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
+import { io, Socket } from 'socket.io-client';
 import ServerControlPanel from '../components/ServerControlPanel';
 import DownloadManager from '../components/DownloadManager';
 import FileManager from '../components/FileManager';
@@ -22,6 +23,7 @@ export default function MainPage({ onLogout }: MainPageProps) {
   const [currentPanel, setCurrentPanel] = useState<'server' | 'download' | 'files' | 'backup' | 'config' | 'discord' | 'remote'>('server');
   const [serverPath, setServerPath] = useState<string | null>(null);
   const [isRemoteSession, setIsRemoteSession] = useState(false);
+  const [remoteSocket, setRemoteSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
     // Verificar si hay sesión remota activa
@@ -34,7 +36,36 @@ export default function MainPage({ onLogout }: MainPageProps) {
           console.log('[MainPage] Remote session active');
           setIsRemoteSession(true);
           setCurrentUser(remoteSession.userData || { username: 'Remote User' });
-          return;
+          
+          // Crear conexión socket remota persistente
+          console.log('[MainPage] Connecting to remote server:', remoteSession.connectionString);
+          const socket = io(remoteSession.connectionString, {
+            auth: { token: remoteSession.token },
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5,
+          });
+
+          socket.on('connect', () => {
+            console.log('[MainPage] Connected to remote server');
+          });
+
+          socket.on('disconnect', (reason) => {
+            console.log('[MainPage] Disconnected from remote server:', reason);
+          });
+
+          socket.on('connect_error', (error) => {
+            console.error('[MainPage] Connection error:', error);
+          });
+
+          setRemoteSocket(socket);
+
+          // Cleanup al desmontar
+          return () => {
+            console.log('[MainPage] Cleaning up remote socket connection');
+            socket.disconnect();
+          };
         }
       } catch (e) {
         console.error('[MainPage] Invalid remote session:', e);
@@ -42,15 +73,17 @@ export default function MainPage({ onLogout }: MainPageProps) {
     }
 
     // Si no hay sesión remota, cargar usuario local y ruta del servidor
-    window.electron.auth.getCurrentUser().then(user => {
-      setCurrentUser(user);
-    });
-    
-    window.electron.server.getPath().then(path => {
-      setServerPath(path);
-    }).catch(err => {
-      console.error('Error loading server path:', err);
-    });
+    if (!remoteSessionStr) {
+      window.electron.auth.getCurrentUser().then(user => {
+        setCurrentUser(user);
+      });
+      
+      window.electron.server.getPath().then(path => {
+        setServerPath(path);
+      }).catch(err => {
+        console.error('Error loading server path:', err);
+      });
+    }
   }, []);
 
   // Recargar la ruta del servidor cuando se cambia de panel (especialmente para File Manager)
@@ -151,6 +184,7 @@ export default function MainPage({ onLogout }: MainPageProps) {
             <ServerControlPanel 
               serverPath={serverPath || undefined}
               isRemoteMode={isRemoteSession}
+              remoteSocket={remoteSocket}
             />
           )}
           {currentPanel === 'download' && (
