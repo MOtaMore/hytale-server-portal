@@ -230,16 +230,18 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
 
       if (isRemoteMode && remoteSocket) {
         // En modo remoto, leer archivos y enviar como base64
-        const fs = require('fs');
         const filesData: Array<{ name: string; content: string }> = [];
-        
+
         for (const filePath of filePaths) {
           try {
             const fileName = filePath.split(/[\\/]/).pop() || filePath;
-            const buffer = await window.electron.files.readBinary(filePath);
-            // Convertir buffer a base64 para transmisión
-            const base64Content = Buffer.from(buffer).toString('base64');
-            filesData.push({ name: fileName, content: base64Content });
+            const readResult = await window.electron.files.readBinary(filePath);
+
+            if (!readResult || !readResult.success || !readResult.base64) {
+              throw new Error(readResult?.error || 'No se pudo leer el archivo');
+            }
+
+            filesData.push({ name: fileName, content: readResult.base64 });
           } catch (err: any) {
             setError(`Error reading file ${filePath}: ${err.message}`);
             continue;

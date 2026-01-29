@@ -403,9 +403,9 @@ function setupIPCListeners() {
     try {
       const fs = require('fs');
       const buffer = fs.readFileSync(filePath);
-      return buffer;
+      return { success: true, base64: buffer.toString('base64') };
     } catch (error: any) {
-      throw new Error(`Cannot read file: ${error.message}`);
+      return { success: false, error: error.message };
     }
   });
 
