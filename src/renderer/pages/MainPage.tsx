@@ -21,9 +21,27 @@ export default function MainPage({ onLogout }: MainPageProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentPanel, setCurrentPanel] = useState<'server' | 'download' | 'files' | 'backup' | 'config' | 'discord' | 'remote'>('server');
   const [serverPath, setServerPath] = useState<string | null>(null);
+  const [isRemoteSession, setIsRemoteSession] = useState(false);
 
   useEffect(() => {
-    // Cargar usuario actual y ruta del servidor
+    // Verificar si hay sesión remota activa
+    const remoteSessionStr = localStorage.getItem('remoteSession');
+    if (remoteSessionStr) {
+      try {
+        const remoteSession = JSON.parse(remoteSessionStr);
+        const sessionAge = Date.now() - remoteSession.timestamp;
+        if (sessionAge < 24 * 60 * 60 * 1000 && remoteSession.token) {
+          console.log('[MainPage] Remote session active');
+          setIsRemoteSession(true);
+          setCurrentUser(remoteSession.userData || { username: 'Remote User' });
+          return;
+        }
+      } catch (e) {
+        console.error('[MainPage] Invalid remote session:', e);
+      }
+    }
+
+    // Si no hay sesión remota, cargar usuario local y ruta del servidor
     window.electron.auth.getCurrentUser().then(user => {
       setCurrentUser(user);
     });
@@ -37,15 +55,23 @@ export default function MainPage({ onLogout }: MainPageProps) {
 
   // Recargar la ruta del servidor cuando se cambia de panel (especialmente para File Manager)
   useEffect(() => {
-    window.electron.server.getPath().then(path => {
-      setServerPath(path);
-    }).catch(err => {
-      console.error('Error reloading server path:', err);
-    });
-  }, [currentPanel]);
+    // Solo recargar si NO es sesión remota
+    if (!isRemoteSession) {
+      window.electron.server.getPath().then(path => {
+        setServerPath(path);
+      }).catch(err => {
+        console.error('Error reloading server path:', err);
+      });
+    }
+  }, [currentPanel, isRemoteSession]);
 
   const handleLogout = async () => {
-    await window.electron.auth.logout();
+    // Si es sesión remota, solo limpiar localStorage
+    if (isRemoteSession) {
+      localStorage.removeItem('remoteSession');
+    } else {
+      await window.electron.auth.logout();
+    }
     onLogout();
   };
 
@@ -104,9 +130,11 @@ export default function MainPage({ onLogout }: MainPageProps) {
 
         <div className="sidebar-footer">
           <div className="current-user">
-            <span className="user-icon">👤</span>
+            <span className="user-icon">{isRemoteSession ? '🌐' : '👤'}</span>
             <div className="user-info">
-              <span className="user-label">{I18nManager.t('auth.current_user')}</span>
+              <span className="user-label">
+                {isRemoteSession ? 'Conexión Remota' : I18nManager.t('auth.current_user')}
+              </span>
               <span className="user-name">{currentUser?.username || 'User'}</span>
             </div>
           </div>
@@ -120,7 +148,10 @@ export default function MainPage({ onLogout }: MainPageProps) {
       <main className="main-content">
         <div className="content-panel">
           {currentPanel === 'server' && (
-            <ServerControlPanel serverPath={serverPath || undefined} />
+            <ServerControlPanel 
+              serverPath={serverPath || undefined}
+              isRemoteMode={isRemoteSession}
+            />
           )}
           {currentPanel === 'download' && (
             <DownloadManager onComplete={() => alert('Download completed!')} />

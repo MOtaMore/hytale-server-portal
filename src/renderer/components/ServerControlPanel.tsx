@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
+import { io, Socket } from 'socket.io-client';
 import './ServerControlPanel.css';
 
 interface ServerControlPanelProps {
   serverPath?: string;
+  isRemoteMode?: boolean;
 }
 
 interface ServerState {
@@ -15,13 +17,15 @@ interface ServerState {
 
 /**
  * Panel de control del servidor Hytale - Fase 1
+ * Soporta modo local (IPC) y modo remoto (Socket.io)
  */
-export default function ServerControlPanel({ serverPath }: ServerControlPanelProps) {
+export default function ServerControlPanel({ serverPath, isRemoteMode = false }: ServerControlPanelProps) {
   const [status, setStatus] = useState<string>('stopped');
   const [logs, setLogs] = useState<string[]>([]);
   const [command, setCommand] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentServerPath, setCurrentServerPath] = useState<string | null | undefined>(serverPath);
+  const [remoteSocket, setRemoteSocket] = useState<Socket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll a los logs más recientes
@@ -29,9 +33,62 @@ export default function ServerControlPanel({ serverPath }: ServerControlPanelPro
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // Cargar ruta del servidor si no está disponible
+  // Conectar al socket remoto si está en modo remoto
   useEffect(() => {
-    if (!serverPath) {
+    if (isRemoteMode) {
+      const remoteSessionStr = localStorage.getItem('remoteSession');
+      if (remoteSessionStr) {
+        try {
+          const remoteSession = JSON.parse(remoteSessionStr);
+          console.log('[ServerControlPanel] Connecting to remote server:', remoteSession.connectionString);
+          
+          const socket = io(remoteSession.connectionString, {
+            auth: { token: remoteSession.token },
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+          });
+
+          socket.on('connect', () => {
+            console.log('[ServerControlPanel] Connected to remote server');
+            // Solicitar estado inicial
+            socket.emit('server:get-status', {}, (response: any) => {
+              if (response.success) {
+                setStatus(response.data.status);
+                setLogs(response.data.logs || []);
+              }
+            });
+          });
+
+          socket.on('server:status-changed', (data: any) => {
+            console.log('[ServerControlPanel] Status changed:', data);
+            setStatus(data.status);
+          });
+
+          socket.on('server:logs-updated', (data: any) => {
+            console.log('[ServerControlPanel] Logs updated');
+            setLogs(data.logs || []);
+          });
+
+          socket.on('disconnect', () => {
+            console.log('[ServerControlPanel] Disconnected from remote server');
+          });
+
+          setRemoteSocket(socket);
+
+          return () => {
+            console.log('[ServerControlPanel] Cleaning up socket connection');
+            socket.disconnect();
+          };
+        } catch (e) {
+          console.error('[ServerControlPanel] Error loading remote session:', e);
+        }
+      }
+    }
+  }, [isRemoteMode]);
+
+  // Cargar ruta del servidor si no está disponible (solo modo local)
+  useEffect(() => {
+    if (!isRemoteMode && !serverPath) {
       window.electron.server.getPath().then(path => {
         setCurrentServerPath(path);
       }).catch(err => {
@@ -40,27 +97,29 @@ export default function ServerControlPanel({ serverPath }: ServerControlPanelPro
     } else {
       setCurrentServerPath(serverPath);
     }
-  }, [serverPath]);
+  }, [serverPath, isRemoteMode]);
 
-  // Cargar estado inicial
+  // Cargar estado inicial (solo modo local)
   useEffect(() => {
-    loadStatus();
-    
-    // Escuchar eventos de actualización de logs desde el main process
-    window.electron.on('server:logs-updated', (newLogs: string[]) => {
-      setLogs(newLogs);
-    });
+    if (!isRemoteMode) {
+      loadStatus();
+      
+      // Escuchar eventos de actualización de logs desde el main process
+      window.electron.on('server:logs-updated', (newLogs: string[]) => {
+        setLogs(newLogs);
+      });
 
-    window.electron.on('server:status-changed', (state: ServerState) => {
-      setStatus(state.status);
-    });
+      window.electron.on('server:status-changed', (state: ServerState) => {
+        setStatus(state.status);
+      });
 
-    // Cleanup listeners
-    return () => {
-      window.electron.off('server:logs-updated');
-      window.electron.off('server:status-changed');
-    };
-  }, []);
+      // Cleanup listeners
+      return () => {
+        window.electron.off('server:logs-updated');
+        window.electron.off('server:status-changed');
+      };
+    }
+  }, [isRemoteMode]);
 
   const loadStatus = async () => {
     try {
@@ -75,24 +134,37 @@ export default function ServerControlPanel({ serverPath }: ServerControlPanelPro
   };
 
   const handleStart = async () => {
-    if (!currentServerPath) {
+    if (!isRemoteMode && !currentServerPath) {
       alert(I18nManager.t('server.no_path'));
       return;
     }
 
     setIsLoading(true);
     try {
-      const result = await window.electron.server.start();
-      if (result.success) {
-        setStatus(result.state.status);
-        await loadStatus();
+      if (isRemoteMode && remoteSocket) {
+        // Usar socket remoto
+        remoteSocket.emit('server:start', {}, (response: any) => {
+          if (response.success) {
+            setStatus(response.data.status);
+          } else {
+            alert(`${I18nManager.t('server.error')}: ${response.error || 'Unknown error'}`);
+          }
+          setIsLoading(false);
+        });
       } else {
-        alert(`${I18nManager.t('server.error')}: ${result.error || 'Unknown error'}`);
+        // Modo local (IPC)
+        const result = await window.electron.server.start();
+        if (result.success) {
+          setStatus(result.state.status);
+          await loadStatus();
+        } else {
+          alert(`${I18nManager.t('server.error')}: ${result.error || 'Unknown error'}`);
+        }
+        setIsLoading(false);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error starting server:', error);
-      alert(`${I18nManager.t('server.error')}: ${error.message}`);
-    } finally {
+      alert(I18nManager.t('server.error'));
       setIsLoading(false);
     }
   };
@@ -100,17 +172,30 @@ export default function ServerControlPanel({ serverPath }: ServerControlPanelPro
   const handleStop = async () => {
     setIsLoading(true);
     try {
-      const result = await window.electron.server.stop();
-      if (result.success) {
-        setStatus(result.state.status);
-        await loadStatus();
+      if (isRemoteMode && remoteSocket) {
+        // Usar socket remoto
+        remoteSocket.emit('server:stop', {}, (response: any) => {
+          if (response.success) {
+            setStatus(response.data.status);
+          } else {
+            alert(`${I18nManager.t('server.error')}: ${response.error || 'Unknown error'}`);
+          }
+          setIsLoading(false);
+        });
       } else {
-        alert(`${I18nManager.t('server.error')}: ${result.error || 'Unknown error'}`);
+        // Modo local (IPC)
+        const result = await window.electron.server.stop();
+        if (result.success) {
+          setStatus(result.state.status);
+          await loadStatus();
+        } else {
+          alert(`${I18nManager.t('server.error')}: ${result.error || 'Unknown error'}`);
+        }
+        setIsLoading(false);
       }
     } catch (error: any) {
       console.error('Error stopping server:', error);
       alert(`${I18nManager.t('server.error')}: ${error.message}`);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -118,17 +203,30 @@ export default function ServerControlPanel({ serverPath }: ServerControlPanelPro
   const handleRestart = async () => {
     setIsLoading(true);
     try {
-      const result = await window.electron.server.restart();
-      if (result.success) {
-        setStatus(result.state.status);
-        await loadStatus();
+      if (isRemoteMode && remoteSocket) {
+        // Usar socket remoto
+        remoteSocket.emit('server:restart', {}, (response: any) => {
+          if (response.success) {
+            setStatus(response.data.status);
+          } else {
+            alert(`${I18nManager.t('server.error')}: ${response.error || 'Unknown error'}`);
+          }
+          setIsLoading(false);
+        });
       } else {
-        alert(`${I18nManager.t('server.error')}: ${result.error || 'Unknown error'}`);
+        // Modo local (IPC)
+        const result = await window.electron.server.restart();
+        if (result.success) {
+          setStatus(result.state.status);
+          await loadStatus();
+        } else {
+          alert(`${I18nManager.t('server.error')}: ${result.error || 'Unknown error'}`);
+        }
+        setIsLoading(false);
       }
     } catch (error: any) {
       console.error('Error restarting server:', error);
       alert(`${I18nManager.t('server.error')}: ${error.message}`);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -138,10 +236,20 @@ export default function ServerControlPanel({ serverPath }: ServerControlPanelPro
     if (!command.trim()) return;
 
     try {
-      const result = await window.electron.server.sendCommand(command);
-      if (result.success) {
-        setCommand('');
-        await loadStatus();
+      if (isRemoteMode && remoteSocket) {
+        // Usar socket remoto
+        remoteSocket.emit('server:send-command', { command }, (response: any) => {
+          if (response.success) {
+            setCommand('');
+          }
+        });
+      } else {
+        // Modo local (IPC)
+        const result = await window.electron.server.sendCommand(command);
+        if (result.success) {
+          setCommand('');
+          await loadStatus();
+        }
       }
     } catch (error) {
       console.error('Error sending command:', error);
