@@ -385,12 +385,12 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
             placeholder={I18nManager.t('server.console_placeholder')}
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            disabled={isLoading || status !== 'running'}
+            disabled={isLoading || (!isRemoteMode && status !== 'running')}
           />
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={isLoading || status !== 'running' || !command.trim()}
+            disabled={isLoading || (!isRemoteMode && status !== 'running') || !command.trim()}
           >
             {I18nManager.t('server.send_command')}
           </button>
