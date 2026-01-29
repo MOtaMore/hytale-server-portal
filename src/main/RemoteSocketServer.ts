@@ -447,6 +447,7 @@ export class RemoteSocketServer {
           if (!command || typeof command !== 'string') {
             throw new Error('Command required');
           }
+          console.log(`[RemoteSocketServer] Sending command to server: ${command}`);
           this.handlers.serverManager.sendCommand(command);
           return { success: true };
         }

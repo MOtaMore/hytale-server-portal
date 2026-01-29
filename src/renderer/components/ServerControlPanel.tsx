@@ -264,20 +264,31 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
     if (!command.trim()) return;
 
     try {
+      setIsLoading(true);
+      console.log('[ServerControlPanel] Sending command:', command);
+      console.log('[ServerControlPanel] Is remote mode:', isRemoteMode);
+      console.log('[ServerControlPanel] Has remote socket:', !!remoteSocket);
+
       if (isRemoteMode && remoteSocket) {
         // Usar socket remoto
-        await sendRemoteCommand(remoteSocket, 'server:send-command', [command]);
+        console.log('[ServerControlPanel] Sending remote command via socket');
+        const response = await sendRemoteCommand(remoteSocket, 'server:send-command', [command]);
+        console.log('[ServerControlPanel] Remote command response:', response);
         setCommand('');
       } else {
         // Modo local (IPC)
+        console.log('[ServerControlPanel] Sending local command via IPC');
         const result = await window.electron.server.sendCommand(command);
         if (result.success) {
           setCommand('');
           await loadStatus();
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending command:', error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
