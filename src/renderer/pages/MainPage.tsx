@@ -12,28 +12,28 @@ import './MainPage.css';
 
 interface MainPageProps {
   onLogout: () => void;
+  sessionType?: 'local' | 'remote' | null;
 }
 
 /**
  * Página principal - estructura de navegación
  * Aquí se añadirán los paneles de cada fase
  */
-export default function MainPage({ onLogout }: MainPageProps) {
+export default function MainPage({ onLogout, sessionType }: MainPageProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentPanel, setCurrentPanel] = useState<'server' | 'download' | 'files' | 'backup' | 'config' | 'discord' | 'remote'>('server');
   const [serverPath, setServerPath] = useState<string | null>(null);
-  const [isRemoteSession, setIsRemoteSession] = useState(false);
+  const [isRemoteSession, setIsRemoteSession] = useState(sessionType === 'remote');
   const [remoteSocket, setRemoteSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
-    // Verificar si hay sesión remota activa
-    const remoteSessionStr = localStorage.getItem('remoteSession');
-    if (remoteSessionStr) {
-      try {
-        const remoteSession = JSON.parse(remoteSessionStr);
-        const sessionAge = Date.now() - remoteSession.timestamp;
-        if (sessionAge < 24 * 60 * 60 * 1000 && remoteSession.token) {
-          console.log('[MainPage] Remote session active');
+    // Si la sesión es remota, cargar datos remota y crear socket
+    if (sessionType === 'remote') {
+      const remoteSessionStr = localStorage.getItem('remoteSession');
+      if (remoteSessionStr) {
+        try {
+          const remoteSession = JSON.parse(remoteSessionStr);
+          console.log('[MainPage] Remote session detected, loading remote user data');
           setIsRemoteSession(true);
           setCurrentUser(remoteSession.userData || { username: 'Remote User' });
           
@@ -66,14 +66,14 @@ export default function MainPage({ onLogout }: MainPageProps) {
             console.log('[MainPage] Cleaning up remote socket connection');
             socket.disconnect();
           };
+        } catch (e) {
+          console.error('[MainPage] Invalid remote session:', e);
         }
-      } catch (e) {
-        console.error('[MainPage] Invalid remote session:', e);
       }
-    }
-
-    // Si no hay sesión remota, cargar usuario local y ruta del servidor
-    if (!remoteSessionStr) {
+    } else if (sessionType === 'local') {
+      // Si la sesión es local, cargar usuario local y ruta del servidor
+      console.log('[MainPage] Local session detected, loading local user data');
+      setIsRemoteSession(false);
       window.electron.auth.getCurrentUser().then(user => {
         setCurrentUser(user);
       });
@@ -84,7 +84,7 @@ export default function MainPage({ onLogout }: MainPageProps) {
         console.error('Error loading server path:', err);
       });
     }
-  }, []);
+  }, [sessionType]);
 
   // Recargar la ruta del servidor cuando se cambia de panel (especialmente para File Manager)
   useEffect(() => {

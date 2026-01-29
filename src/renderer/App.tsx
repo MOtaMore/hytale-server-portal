@@ -9,6 +9,7 @@ import MainPage from './pages/MainPage';
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [authPageKey, setAuthPageKey] = useState(0);
+  const [sessionType, setSessionType] = useState<'local' | 'remote' | null>(null);
 
   useEffect(() => {
     // Verificar si hay usuario autenticado al iniciar
@@ -20,12 +21,14 @@ export default function App() {
           const remoteSession = JSON.parse(remoteSessionStr);
           // Verificar que la sesión no expire (24 horas)
           const sessionAge = Date.now() - remoteSession.timestamp;
-          if (sessionAge < 24 * 60 * 60 * 1000 && remoteSession.token) {
-            console.log('[App] Remote session found, authenticating...');
+          if (sessionAge < 24 * 60 * 60 * 1000 && remoteSession.token && remoteSession.connectionString) {
+            console.log('[App] Remote session found and valid, authenticating...');
+            setSessionType('remote');
             setIsAuthenticated(true);
             return;
           } else {
             // Sesión expirada
+            console.log('[App] Remote session expired, clearing...');
             localStorage.removeItem('remoteSession');
           }
         } catch (e) {
@@ -36,13 +39,24 @@ export default function App() {
 
       // Si no hay sesión remota válida, verificar usuario local
       const user = await window.electron.auth.getCurrentUser();
-      setIsAuthenticated(!!user);
+      if (user) {
+        console.log('[App] Local session found');
+        setSessionType('local');
+        setIsAuthenticated(true);
+      } else {
+        console.log('[App] No session found');
+        setSessionType(null);
+        setIsAuthenticated(false);
+      }
     };
 
     checkAuth();
   }, []);
 
   const handleLogout = () => {
+    // Limpiar ambas sesiones posibles
+    localStorage.removeItem('remoteSession');
+    setSessionType(null);
     setIsAuthenticated(false);
     setAuthPageKey(prev => prev + 1); // Force re-render AuthPage
   };
@@ -54,7 +68,7 @@ export default function App() {
   }
 
   return isAuthenticated ? (
-    <MainPage onLogout={handleLogout} />
+    <MainPage onLogout={handleLogout} sessionType={sessionType} />
   ) : (
     <AuthPage key={authPageKey} onAuthenticated={() => setIsAuthenticated(true)} />
   );
