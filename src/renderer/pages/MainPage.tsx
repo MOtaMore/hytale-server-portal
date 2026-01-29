@@ -30,13 +30,35 @@ export default function MainPage({ onLogout, sessionType }: MainPageProps) {
     // Si la sesión es remota, cargar datos remota y crear socket
     if (sessionType === 'remote') {
       const remoteSessionStr = localStorage.getItem('remoteSession');
-      if (remoteSessionStr) {
-        try {
-          const remoteSession = JSON.parse(remoteSessionStr);
-          console.log('[MainPage] Remote session detected, loading remote user data');
-          setIsRemoteSession(true);
-          setCurrentUser(remoteSession.userData || { username: 'Remote User' });
-          
+      if (!remoteSessionStr) {
+        console.warn('[MainPage] Remote session expected but not found in localStorage');
+        setIsRemoteSession(false);
+        return;
+      }
+
+      try {
+        const remoteSession = JSON.parse(remoteSessionStr);
+        console.log('[MainPage] Remote session detected, loading remote user data');
+        setIsRemoteSession(true);
+
+        const resolvedUsername =
+          remoteSession?.userData?.username ||
+          remoteSession?.username ||
+          remoteSession?.userData?.email ||
+          remoteSession?.userData?.userId ||
+          'Remote User';
+
+        setCurrentUser({
+          ...(remoteSession.userData || {}),
+          username: resolvedUsername,
+        });
+
+        if (!remoteSession.token || !remoteSession.connectionString) {
+          console.error('[MainPage] Remote session missing token or connectionString');
+          return;
+        }
+
+        if (!remoteSocket) {
           // Crear conexión socket remota persistente
           console.log('[MainPage] Connecting to remote server:', remoteSession.connectionString);
           const socket = io(remoteSession.connectionString, {
@@ -47,28 +69,10 @@ export default function MainPage({ onLogout, sessionType }: MainPageProps) {
             reconnectionAttempts: 5,
           });
 
-          socket.on('connect', () => {
-            console.log('[MainPage] Connected to remote server');
-          });
-
-          socket.on('disconnect', (reason) => {
-            console.log('[MainPage] Disconnected from remote server:', reason);
-          });
-
-          socket.on('connect_error', (error) => {
-            console.error('[MainPage] Connection error:', error);
-          });
-
           setRemoteSocket(socket);
-
-          // Cleanup al desmontar
-          return () => {
-            console.log('[MainPage] Cleaning up remote socket connection');
-            socket.disconnect();
-          };
-        } catch (e) {
-          console.error('[MainPage] Invalid remote session:', e);
         }
+      } catch (e) {
+        console.error('[MainPage] Invalid remote session:', e);
       }
     } else if (sessionType === 'local') {
       // Si la sesión es local, cargar usuario local y ruta del servidor
@@ -84,7 +88,43 @@ export default function MainPage({ onLogout, sessionType }: MainPageProps) {
         console.error('Error loading server path:', err);
       });
     }
-  }, [sessionType]);
+  }, [sessionType, remoteSocket]);
+
+  useEffect(() => {
+    if (!remoteSocket) {
+      return;
+    }
+
+    const onConnect = () => {
+      console.log('[MainPage] Connected to remote server');
+    };
+
+    const onDisconnect = (reason: string) => {
+      console.log('[MainPage] Disconnected from remote server:', reason);
+    };
+
+    const onConnectError = (error: any) => {
+      console.error('[MainPage] Connection error:', error);
+    };
+
+    remoteSocket.on('connect', onConnect);
+    remoteSocket.on('disconnect', onDisconnect);
+    remoteSocket.on('connect_error', onConnectError);
+
+    return () => {
+      remoteSocket.off('connect', onConnect);
+      remoteSocket.off('disconnect', onDisconnect);
+      remoteSocket.off('connect_error', onConnectError);
+    };
+  }, [remoteSocket]);
+
+  useEffect(() => {
+    if (sessionType !== 'remote' && remoteSocket) {
+      console.log('[MainPage] Session type changed, disconnecting remote socket');
+      remoteSocket.disconnect();
+      setRemoteSocket(null);
+    }
+  }, [sessionType, remoteSocket]);
 
   // Recargar la ruta del servidor cuando se cambia de panel (especialmente para File Manager)
   useEffect(() => {
@@ -175,7 +215,9 @@ export default function MainPage({ onLogout, sessionType }: MainPageProps) {
               <span className="user-label">
                 {isRemoteSession ? 'Conexión Remota' : I18nManager.t('auth.current_user')}
               </span>
-              <span className="user-name">{currentUser?.username || 'User'}</span>
+              <span className="user-name">
+                {currentUser?.username || currentUser?.email || currentUser?.userId || 'User'}
+              </span>
             </div>
           </div>
           <button className="logout-btn" onClick={handleLogout}>

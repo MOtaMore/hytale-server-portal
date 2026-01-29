@@ -168,6 +168,7 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
         connectionString,
         token: result.token,
         userData: result.userData,
+        username,
         timestamp: Date.now(),
       }));
 
