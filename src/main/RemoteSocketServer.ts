@@ -357,6 +357,7 @@ export class RemoteSocketServer {
       'server:status': 'server.status',
       'server:logs': 'server.logs',
       'server:path': 'server.status',
+      'server:send-command': 'server.command',
 
       // Config commands
       'config:read': 'config.read',
@@ -439,6 +440,15 @@ export class RemoteSocketServer {
             throw new Error('Server path not configured');
           }
           return { serverPath };
+        }
+
+        case 'server:send-command': {
+          const [command] = args;
+          if (!command || typeof command !== 'string') {
+            throw new Error('Command required');
+          }
+          this.handlers.serverManager.sendCommand(command);
+          return { success: true };
         }
 
         // ========== CONFIG COMMANDS ==========

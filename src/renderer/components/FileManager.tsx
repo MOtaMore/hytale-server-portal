@@ -197,9 +197,8 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
       setIsLoading(true);
       setError('');
 
-      const result = await window.electron.files.delete(file.path);
-
-      if (result.success) {
+      if (isRemoteMode && remoteSocket) {
+        await sendRemoteCommand(remoteSocket, 'files:delete', [file.path]);
         alert(t('files.file_deleted'));
         loadFiles(currentPath);
         if (selectedFile?.path === file.path) {
@@ -207,14 +206,25 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
           setFileContent('');
         }
       } else {
-        setError(result.error || 'Error al eliminar archivo');
+        const result = await window.electron.files.delete(file.path);
+
+        if (result.success) {
+          alert(t('files.file_deleted'));
+          loadFiles(currentPath);
+          if (selectedFile?.path === file.path) {
+            setSelectedFile(null);
+            setFileContent('');
+          }
+        } else {
+          setError(result.error || 'Error al eliminar archivo');
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Error al eliminar archivo');
     } finally {
       setIsLoading(false);
     }
-  }, [currentPath, loadFiles, selectedFile, t]);
+  }, [currentPath, loadFiles, selectedFile, t, isRemoteMode, remoteSocket]);
 
   /**
    * Sube archivos a la carpeta actual

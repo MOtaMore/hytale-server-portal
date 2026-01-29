@@ -66,7 +66,11 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
 
       const onLogsUpdated = (data: any) => {
         console.log('[ServerControlPanel] Logs updated');
-        setLogs(data.logs || []);
+        if (Array.isArray(data)) {
+          setLogs(data);
+        } else {
+          setLogs(data.logs || []);
+        }
       };
 
       const onConnect = () => {
@@ -262,11 +266,8 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
     try {
       if (isRemoteMode && remoteSocket) {
         // Usar socket remoto
-        remoteSocket.emit('server:send-command', { command }, (response: any) => {
-          if (response.success) {
-            setCommand('');
-          }
-        });
+        await sendRemoteCommand(remoteSocket, 'server:send-command', [command]);
+        setCommand('');
       } else {
         // Modo local (IPC)
         const result = await window.electron.server.sendCommand(command);
