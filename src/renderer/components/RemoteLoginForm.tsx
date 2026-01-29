@@ -66,30 +66,64 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
         ? `http://${ipAddress}:${port}` 
         : tunnelUrl;
 
-      console.log('[RemoteLoginForm] Connecting to:', connectionString);
+      console.log('[RemoteLoginForm] Attempting connection to:', connectionString);
 
       // Crear conexión Socket.io sin token (para login)
       socket = io(connectionString, {
         transports: ['websocket', 'polling'],
         timeout: 10000,
         reconnection: false,
+        autoConnect: false, // No conectar automáticamente
       });
+
+      // Agregar listeners de error detallados
+      socket.on('error', (error: any) => {
+        console.error('[RemoteLoginForm] Socket error:', error);
+      });
+
+      socket.on('connect_error', (error: any) => {
+        console.error('[RemoteLoginForm] Connect error:', error.message, error);
+      });
+
+      socket.on('connect_timeout', () => {
+        console.error('[RemoteLoginForm] Connection timeout');
+      });
+
+      // Conectar manualmente
+      socket.connect();
 
       // Esperar a que se conecte
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
-          reject(new Error(t('remote.error_connection_timeout') || 'Connection timeout'));
+          if (socket) {
+            socket.disconnect();
+          }
+          reject(new Error('Tiempo de espera agotado. Verifica que el servidor remoto esté funcionando y sea accesible.'));
         }, 10000);
 
-        socket!.on('connect', () => {
+        socket!.once('connect', () => {
           clearTimeout(timeout);
-          console.log('[RemoteLoginForm] Socket connected');
+          console.log('[RemoteLoginForm] Socket connected successfully');
           resolve();
         });
 
-        socket!.on('connect_error', (error) => {
+        socket!.once('connect_error', (error: any) => {
           clearTimeout(timeout);
-          reject(new Error(`${t('remote.error_connection')}: ${error.message}`));
+          let errorMsg = 'Error de conexión: ';
+          
+          if (error.message.includes('ECONNREFUSED')) {
+            errorMsg += 'No se pudo conectar al servidor. Verifica la IP y el puerto.';
+          } else if (error.message.includes('ETIMEDOUT')) {
+            errorMsg += 'Tiempo de espera agotado. El servidor no responde.';
+          } else if (error.message.includes('ENETUNREACH')) {
+            errorMsg += 'Red inalcanzable. Verifica tu conexión de red.';
+          } else if (error.message.includes('EHOSTUNREACH')) {
+            errorMsg += 'Host inalcanzable. Verifica la dirección IP.';
+          } else {
+            errorMsg += error.message || 'Error desconocido';
+          }
+          
+          reject(new Error(errorMsg));
         });
       });
 
@@ -233,6 +267,23 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
               autoComplete="current-password"
             />
           </div>
+        </div>
+
+        <div className="remote-warning-box" style={{ 
+          background: '#fff3cd', 
+          border: '1px solid #ffc107', 
+          borderRadius: '4px', 
+          padding: '12px', 
+          marginBottom: '15px',
+          fontSize: '13px'
+        }}>
+          <strong>⚠️ Antes de conectar, verifica:</strong>
+          <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+            <li>El servidor remoto tiene el acceso remoto <strong>HABILITADO</strong></li>
+            <li>El servidor Socket.io está <strong>CORRIENDO</strong> en el puerto {connectionMethod === 'ip' ? port : '9999'}</li>
+            <li>No hay firewall bloqueando la conexión</li>
+            <li>La IP/URL es correcta y accesible desde tu red</li>
+          </ul>
         </div>
 
         <button

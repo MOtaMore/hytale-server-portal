@@ -283,7 +283,20 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
             <p>Puerto: {serverPort}</p>
             <p>Clientes conectados: {connectedClients}</p>
             {!socketServerRunning && remoteEnabled && (
-              <small className="warning-text">⚠️ El servidor no está corriendo. Verifica la configuración.</small>
+              <div style={{
+                background: '#dc3545',
+                color: 'white',
+                padding: '12px',
+                borderRadius: '4px',
+                marginTop: '10px',
+                fontWeight: 'bold'
+              }}>
+                ⚠️ SERVIDOR NO DISPONIBLE
+                <div style={{ fontSize: '12px', fontWeight: 'normal', marginTop: '5px' }}>
+                  El servidor Socket.io no está corriendo. Los clientes remotos NO podrán conectarse.
+                  Verifica que el acceso remoto esté habilitado y que no haya errores en la consola.
+                </div>
+              </div>
             )}
           </div>
 
