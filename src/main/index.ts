@@ -49,7 +49,7 @@ function createWindow() {
           "default-src 'self'; " +
           "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
           "style-src 'self' 'unsafe-inline'; " +
-          "connect-src 'self' ws: wss: http: https:; " +
+          "connect-src 'self' ws: wss: http: https: *; " +
           "img-src 'self' data: file:; " +
           "font-src 'self' data:;"
         ]
