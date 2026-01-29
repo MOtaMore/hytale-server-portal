@@ -7,7 +7,7 @@ import RemoteLoginForm from '../components/RemoteLoginForm';
 import './AuthPage.css';
 
 interface AuthPageProps {
-  onAuthenticated: () => void;
+  onAuthenticated: (type: 'local' | 'remote') => void;
 }
 
 /**
@@ -40,8 +40,8 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
     setCurrentLanguage(language);
   };
 
-  const handleAuthenticated = () => {
-    onAuthenticated();
+  const handleAuthenticated = (type: 'local' | 'remote') => {
+    onAuthenticated(type);
   };
 
   if (isLoading) {
@@ -96,11 +96,11 @@ export default function AuthPage({ onAuthenticated }: AuthPageProps) {
 
           {/* Forms */}
           {!accountExists ? (
-            <LocalAccountSetup onSuccess={handleAuthenticated} />
+            <LocalAccountSetup onSuccess={() => handleAuthenticated('local')} />
           ) : loginMode === 'local' ? (
-            <LoginForm onSuccess={handleAuthenticated} />
+            <LoginForm onSuccess={() => handleAuthenticated('local')} />
           ) : (
-            <RemoteLoginForm onSuccess={handleAuthenticated} />
+            <RemoteLoginForm onSuccess={() => handleAuthenticated('remote')} />
           )}
         </div>
       </div>

@@ -77,6 +77,12 @@ export default function App() {
   return isAuthenticated ? (
     <MainPage onLogout={handleLogout} sessionType={sessionType} />
   ) : (
-    <AuthPage key={authPageKey} onAuthenticated={() => setIsAuthenticated(true)} />
+    <AuthPage
+      key={authPageKey}
+      onAuthenticated={(type) => {
+        setSessionType(type);
+        setIsAuthenticated(true);
+      }}
+    />
   );
 }
