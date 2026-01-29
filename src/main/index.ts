@@ -40,6 +40,23 @@ function createWindow() {
     icon: path.join(__dirname, '../../resources/icons/icon.png'),
   });
 
+  // Configurar CSP para permitir conexiones WebSocket remotas
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self' 'unsafe-inline'; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "connect-src 'self' ws: wss: http: https:; " +
+          "img-src 'self' data: file:; " +
+          "font-src 'self' data:;"
+        ]
+      }
+    });
+  });
+
   if (isDevMode) {
     mainWindow.loadURL('http://localhost:3000');
     mainWindow.webContents.openDevTools();

@@ -119,7 +119,7 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
           
           let errorMsg = 'Error de conexión: ';
           const errMsg = error.message || '';
-          const errDesc = error.description || '';
+          const errDesc = typeof error.description === 'string' ? error.description : '';
           const errType = error.type || '';
           
           console.log('[RemoteLoginForm] Error string analysis:', { errMsg, errDesc, errType });
@@ -135,7 +135,7 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
           } else if (errType === 'TransportError' || errMsg.includes('websocket') || errMsg.includes('WebSocket')) {
             errorMsg += `No se puede establecer conexión WebSocket. Verifica:\n• El servidor remoto está corriendo en ${connectionString}\n• El acceso remoto está habilitado en el servidor\n• No hay firewall bloqueando el puerto ${connectionMethod === 'ip' ? port : '9999'}`;
           } else {
-            errorMsg += `${errMsg || errDesc || 'Error desconocido'}\n\nDetalles técnicos: ${JSON.stringify({ type: errType, msg: errMsg, desc: errDesc })}`;
+            errorMsg += `${errMsg || errDesc || 'Error desconocido'}\n\nDetalles técnicos: ${JSON.stringify({ type: errType, msg: errMsg })}`;
           }
           
           reject(new Error(errorMsg));
