@@ -1,0 +1,50 @@
+@echo off
+REM Script de configuración para AMD - Recompila módulos nativos para compatibilidad Windows
+
+echo.
+echo 🔧 Configurando aplicación para procesador AMD (Windows)...
+echo.
+
+REM Verificar si npm está instalado
+where npm >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo ❌ npm no está instalado. Por favor, instala Node.js desde https://nodejs.org
+    pause
+    exit /b 1
+)
+
+echo ✓ npm encontrado
+echo.
+
+echo 📦 Recompilando módulos nativos para AMD...
+call npm run rebuild:native
+
+if %ERRORLEVEL% NEQ 0 (
+    echo ❌ Error durante la recompilación
+    echo.
+    echo Intenta en modo sin GPU:
+    echo   npm run dev:nogpu
+    pause
+    exit /b 1
+)
+
+echo ✓ Recompilación exitosa
+echo.
+
+echo 📥 Reinstalando dependencias...
+call npm install
+
+if %ERRORLEVEL% NEQ 0 (
+    echo ❌ Error durante npm install
+    pause
+    exit /b 1
+)
+
+echo.
+echo ✅ ¡Configuración completada!
+echo.
+echo Ahora puedes ejecutar:
+echo   npm run dev        (con GPU)
+echo   npm run dev:nogpu  (sin GPU - para problemas de compatibilidad)
+echo.
+pause

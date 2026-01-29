@@ -66,7 +66,37 @@ resources/
 
 - **Node.js** >= 16.0.0
 - **npm** >= 8.0.0
-- **Electron** 27.0.0 (automático con npm install)
+- **Electron** 40.0.0 (automático con npm install)
+- **Python 3** (para compilar módulos nativos)
+- **Build Tools**:
+  - **Linux**: `sudo apt-get install build-essential python3`
+  - **Windows**: Visual Studio Build Tools
+  - **macOS**: Xcode Command Line Tools
+
+### 🖥️ Soporte para Procesadores
+
+✅ **Intel** - Compatible por defecto
+✅ **AMD** - Requiere recompilación de módulos nativos
+
+#### Si tienes procesador AMD:
+
+**Linux/macOS:**
+```bash
+./setup-amd.sh
+```
+
+**Windows:**
+```bash
+setup-amd.bat
+```
+
+O manualmente:
+```bash
+npm run rebuild
+npm run dev
+```
+
+Para más detalles, ver [SETUP_AMD.md](SETUP_AMD.md)
 
 ### Pasos de Instalación
 
@@ -95,6 +125,11 @@ resources/
 npm run dev              # Inicia webpack + electron (recomendado)
 npm run dev:main        # Compila main process en watch mode
 npm run dev:renderer    # Inicia webpack dev server para renderer
+npm run dev:nogpu       # Dev sin aceleración GPU (para problemas de compatibilidad)
+
+# AMD - Recompilación de módulos nativos
+npm run rebuild         # Recompila módulos nativos para tu procesador
+npm run rebuild:native  # Solo recompila, sin instalar dependencias
 
 # Build
 npm run build           # Compila main + renderer para producción
