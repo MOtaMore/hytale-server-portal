@@ -98,11 +98,16 @@ REM Iniciar servidor en segundo plano
 echo [INFO] Iniciando servidor Hytale...
 echo [INFO] Los logs se guardaran en: %LOG_FILE%
 
-REM Crear comando de Java con todos los parametros
-set "JAVA_CMD=java -Xms%XMS% -Xmx%XMX% -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -XX:+UnlockExperimentalVMOptions -XX:ActiveProcessorCount=%ACTIVE_PROCESSORS% -XX:+ParallelRefProcEnabled -jar "%SERVER_JAR%" --assets "%ASSETS_ZIP%""
+REM Crear archivo temporal para el comando
+set "TEMP_SCRIPT=%TEMP%\hytale_start_%RANDOM%.bat"
 
-REM Iniciar el servidor en segundo plano y guardar PID
-start "Hytale Server" /B cmd /c "%JAVA_CMD% >> "%LOG_FILE%" 2>&1"
+REM Escribir comando al archivo temporal
+echo @echo off > "%TEMP_SCRIPT%"
+echo cd /d "%SERVER_DIR%" >> "%TEMP_SCRIPT%"
+echo java -Xms%XMS% -Xmx%XMX% -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+AlwaysPreTouch -XX:+UseStringDeduplication -XX:+UnlockExperimentalVMOs -XX:ActiveProcessorCount=%ACTIVE_PROCESSORS% -XX:+ParallelRefProcEnabled -jar "%SERVER_JAR%" --assets "%ASSETS_ZIP%" ^>^> "%LOG_FILE%" 2^>^&1 >> "%TEMP_SCRIPT%"
+
+REM Iniciar el servidor usando el archivo temporal
+start "Hytale Server" /MIN cmd /c ""%TEMP_SCRIPT%"" ^& del "%TEMP_SCRIPT%"
 
 REM Esperar un momento para obtener el PID
 timeout /t 2 /nobreak >nul

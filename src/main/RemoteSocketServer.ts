@@ -85,16 +85,18 @@ export class RemoteSocketServer {
         transports: ['websocket', 'polling'],
       });
 
-      // Middleware de autenticación
+      // Middleware de autenticación - permite conexiones sin token para login
       this.io.use(async (socket: AuthenticatedSocket, next) => {
         try {
           const token = socket.handshake.auth.token;
           
+          // Permitir conexión sin token (para el proceso de login)
           if (!token) {
-            return next(new Error('Authentication token required'));
+            console.log('[RemoteSocketServer] Unauthenticated connection allowed for login');
+            return next();
           }
 
-          // Verificar JWT
+          // Verificar JWT si existe token
           const decoded = this.remoteAccessManager.verifyJWT(token);
           
           if (!decoded || !decoded.userId) {
@@ -206,6 +208,52 @@ export class RemoteSocketServer {
       username: socket.username,
       permissions: socket.permissions,
       serverId: 'hytale-server-1', // TODO: Obtener ID real del servidor
+    });
+
+    // Handler para login (antes de autenticar con token)
+    socket.on('auth:login', async (data: { username: string; password: string }, callback) => {
+      try {
+        console.log(`[RemoteSocketServer] Login attempt from: ${data.username}`);
+        
+        const tokenData = await this.remoteAccessManager.authenticateRemoteUser(
+          data.username,
+          data.password
+        );
+
+        // Obtener el usuario completo para generar JWT
+        const users = this.remoteAccessManager.getRemoteUsers();
+        const user = users.find((u: any) => u.id === tokenData.userId);
+
+        if (!user) {
+          throw new Error('User not found after authentication');
+        }
+
+        // Crear JWT con los datos del usuario autenticado
+        const jwt = this.remoteAccessManager.createJWT({
+          ...user,
+          passwordHash: '', // No incluir hash en el token
+          permissions: tokenData.permissions,
+        } as any);
+
+        // Actualizar socket con datos del usuario
+        socket.userId = tokenData.userId;
+        socket.username = tokenData.username;
+        socket.permissions = tokenData.permissions;
+
+        console.log(`[RemoteSocketServer] Login successful: ${data.username}`);
+
+        callback({
+          success: true,
+          token: jwt,
+          userData: tokenData,
+        });
+      } catch (error: any) {
+        console.error(`[RemoteSocketServer] Login failed:`, error.message);
+        callback({
+          success: false,
+          error: error.message,
+        });
+      }
     });
 
     // Manejar comandos

@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { I18nManager } from '../../shared/i18n/I18nManager';
 import './RemoteLoginForm.css';
 
@@ -26,6 +27,8 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
     e.preventDefault();
     setError('');
     setLoading(true);
+
+    let socket: Socket | null = null;
 
     try {
       // Validación
@@ -58,28 +61,72 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
         throw new Error(t('remote.error_credentials_required'));
       }
 
-      // Construir la conexión
+      // Construir la URL de conexión
       const connectionString = connectionMethod === 'ip' 
-        ? `${ipAddress}:${port}` 
+        ? `http://${ipAddress}:${port}` 
         : tunnelUrl;
 
-      // Intentar login remoto
-      const result = await window.electron.remote.login(username, password);
-      
-      if (result.success) {
-        // Guardar la sesión remota
-        localStorage.setItem('remoteSession', JSON.stringify({
-          connectionString,
-          token: result.token,
-          userData: result.userData,
-          timestamp: Date.now(),
-        }));
+      console.log('[RemoteLoginForm] Connecting to:', connectionString);
 
-        onSuccess();
-      } else {
-        throw new Error(result.message || 'Error al conectar');
-      }
+      // Crear conexión Socket.io sin token (para login)
+      socket = io(connectionString, {
+        transports: ['websocket', 'polling'],
+        timeout: 10000,
+        reconnection: false,
+      });
+
+      // Esperar a que se conecte
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error(t('remote.error_connection_timeout') || 'Connection timeout'));
+        }, 10000);
+
+        socket!.on('connect', () => {
+          clearTimeout(timeout);
+          console.log('[RemoteLoginForm] Socket connected');
+          resolve();
+        });
+
+        socket!.on('connect_error', (error) => {
+          clearTimeout(timeout);
+          reject(new Error(`${t('remote.error_connection')}: ${error.message}`));
+        });
+      });
+
+      // Enviar credenciales para autenticación
+      const result = await new Promise<any>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error(t('remote.error_auth_timeout') || 'Authentication timeout'));
+        }, 5000);
+
+        socket!.emit('auth:login', { username, password }, (response: any) => {
+          clearTimeout(timeout);
+          if (response.success) {
+            resolve(response);
+          } else {
+            reject(new Error(response.error || t('remote.error_auth_failed')));
+          }
+        });
+      });
+
+      // Desconectar socket temporal
+      socket.disconnect();
+
+      // Guardar la sesión remota
+      localStorage.setItem('remoteSession', JSON.stringify({
+        connectionString,
+        token: result.token,
+        userData: result.userData,
+        timestamp: Date.now(),
+      }));
+
+      console.log('[RemoteLoginForm] Login successful');
+      onSuccess();
     } catch (err: any) {
+      console.error('[RemoteLoginForm] Login error:', err);
+      if (socket) {
+        socket.disconnect();
+      }
       setError(err.message || t('remote.error_connection'));
     } finally {
       setLoading(false);

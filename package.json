@@ -78,7 +78,6 @@
     },
     "linux": {
       "target": [
-        "AppImage",
         "deb"
       ],
       "icon": "resources/icons/icon.png",

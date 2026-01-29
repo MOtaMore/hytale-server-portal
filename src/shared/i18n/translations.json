@@ -259,6 +259,9 @@
       "error_invalid_url": "URL de túnel inválida",
       "error_credentials_required": "Ingresa usuario y contraseña",
       "error_connection": "Error de conexión",
+      "error_connection_timeout": "Tiempo de conexión agotado",
+      "error_auth_timeout": "Tiempo de autenticación agotado",
+      "error_auth_failed": "Autenticación fallida",
       "permission_categories": {
         "server": "Servidor",
         "config": "Configuración",
@@ -566,6 +569,9 @@
       "error_invalid_url": "URL do túnel inválida",
       "error_credentials_required": "Digite usuário e senha",
       "error_connection": "Erro de conexão",
+      "error_connection_timeout": "Tempo de conexão esgotado",
+      "error_auth_timeout": "Tempo de autenticação esgotado",
+      "error_auth_failed": "Autenticação falhou",
       "permission_categories": {
         "server": "Servidor",
         "config": "Configuração",
@@ -869,6 +875,9 @@
       "error_invalid_url": "Invalid tunnel URL",
       "error_credentials_required": "Enter username and password",
       "error_connection": "Connection error",
+      "error_connection_timeout": "Connection timeout",
+      "error_auth_timeout": "Authentication timeout",
+      "error_auth_failed": "Authentication failed",
       "permission_categories": {
         "server": "Server",
         "config": "Configuration",
@@ -1172,6 +1181,9 @@
       "error_invalid_url": "Ungültige Tunnel-URL",
       "error_credentials_required": "Benutzername und Passwort eingeben",
       "error_connection": "Verbindungsfehler",
+      "error_connection_timeout": "Verbindungszeitüberschreitung",
+      "error_auth_timeout": "Authentifizierungszeitüberschreitung",
+      "error_auth_failed": "Authentifizierung fehlgeschlagen",
       "permission_categories": {
         "server": "Server",
         "config": "Konfiguration",
@@ -1781,6 +1793,9 @@
       "error_invalid_url": "无效的隧道 URL",
       "error_credentials_required": "输入用户名和密码",
       "error_connection": "连接错误",
+      "error_connection_timeout": "连接超时",
+      "error_auth_timeout": "认证超时",
+      "error_auth_failed": "认证失败",
       "permission_categories": {
         "server": "服务器",
         "config": "配置",
