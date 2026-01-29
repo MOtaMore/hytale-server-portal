@@ -17,6 +17,10 @@ import { RemoteSocketServer } from './RemoteSocketServer';
 // Properly check if running in development
 const isDevMode = (isDev as any) === true || (isDev as any).default === true;
 
+// Add stability flags for problematic systems
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+
 let mainWindow: BrowserWindow | null = null;
 let discordManager: DiscordManager | null = null;
 let remoteAccessManager: RemoteAccessManager | null = null;
