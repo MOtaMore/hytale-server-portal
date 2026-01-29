@@ -99,12 +99,19 @@ export default function MainPage({ onLogout, sessionType }: MainPageProps) {
   }, [currentPanel, isRemoteSession]);
 
   const handleLogout = async () => {
-    // Si es sesión remota, solo limpiar localStorage
-    if (isRemoteSession) {
+    // Si es sesión remota, desconectar socket y limpiar localStorage
+    if (isRemoteSession && remoteSocket) {
+      console.log('[MainPage] Logging out from remote session');
+      remoteSocket.disconnect();
+      setRemoteSocket(null);
       localStorage.removeItem('remoteSession');
-    } else {
+    } else if (!isRemoteSession) {
+      // Si es sesión local, usar logout de electron
+      console.log('[MainPage] Logging out from local session');
       await window.electron.auth.logout();
     }
+    setIsRemoteSession(false);
+    setCurrentUser(null);
     onLogout();
   };
 
