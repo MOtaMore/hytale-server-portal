@@ -16,19 +16,26 @@ export default function App() {
     const checkAuth = async () => {
       // Primero verificar sesión remota en localStorage
       const remoteSessionStr = localStorage.getItem('remoteSession');
+      console.log('[App] Checking authentication... remoteSession exists:', !!remoteSessionStr);
+      
       if (remoteSessionStr) {
         try {
           const remoteSession = JSON.parse(remoteSessionStr);
           // Verificar que la sesión no expire (24 horas)
           const sessionAge = Date.now() - remoteSession.timestamp;
+          const sessionAgeHours = Math.round(sessionAge / (60 * 60 * 1000));
+          console.log('[App] Remote session found, age:', sessionAgeHours, 'hours');
+          console.log('[App] Remote session has token:', !!remoteSession.token);
+          console.log('[App] Remote session has connectionString:', !!remoteSession.connectionString);
+          
           if (sessionAge < 24 * 60 * 60 * 1000 && remoteSession.token && remoteSession.connectionString) {
-            console.log('[App] Remote session found and valid, authenticating...');
+            console.log('[App] Remote session valid, authenticating...');
             setSessionType('remote');
             setIsAuthenticated(true);
             return;
           } else {
             // Sesión expirada
-            console.log('[App] Remote session expired, clearing...');
+            console.log('[App] Remote session invalid/expired, clearing...');
             localStorage.removeItem('remoteSession');
           }
         } catch (e) {
