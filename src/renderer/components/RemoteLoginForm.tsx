@@ -109,18 +109,33 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
 
         socket!.once('connect_error', (error: any) => {
           clearTimeout(timeout);
-          let errorMsg = 'Error de conexión: ';
+          console.error('[RemoteLoginForm] connect_error details:', {
+            message: error.message,
+            description: error.description,
+            context: error.context,
+            type: error.type,
+            fullError: error
+          });
           
-          if (error.message.includes('ECONNREFUSED')) {
+          let errorMsg = 'Error de conexión: ';
+          const errMsg = error.message || '';
+          const errDesc = error.description || '';
+          const errType = error.type || '';
+          
+          console.log('[RemoteLoginForm] Error string analysis:', { errMsg, errDesc, errType });
+          
+          if (errMsg.includes('ECONNREFUSED') || errDesc.includes('ECONNREFUSED')) {
             errorMsg += 'No se pudo conectar al servidor. Verifica la IP y el puerto.';
-          } else if (error.message.includes('ETIMEDOUT')) {
+          } else if (errMsg.includes('ETIMEDOUT') || errDesc.includes('ETIMEDOUT')) {
             errorMsg += 'Tiempo de espera agotado. El servidor no responde.';
-          } else if (error.message.includes('ENETUNREACH')) {
+          } else if (errMsg.includes('ENETUNREACH') || errDesc.includes('ENETUNREACH')) {
             errorMsg += 'Red inalcanzable. Verifica tu conexión de red.';
-          } else if (error.message.includes('EHOSTUNREACH')) {
+          } else if (errMsg.includes('EHOSTUNREACH') || errDesc.includes('EHOSTUNREACH')) {
             errorMsg += 'Host inalcanzable. Verifica la dirección IP.';
+          } else if (errType === 'TransportError' || errMsg.includes('websocket') || errMsg.includes('WebSocket')) {
+            errorMsg += `No se puede establecer conexión WebSocket. Verifica:\n• El servidor remoto está corriendo en ${connectionString}\n• El acceso remoto está habilitado en el servidor\n• No hay firewall bloqueando el puerto ${connectionMethod === 'ip' ? port : '9999'}`;
           } else {
-            errorMsg += error.message || 'Error desconocido';
+            errorMsg += `${errMsg || errDesc || 'Error desconocido'}\n\nDetalles técnicos: ${JSON.stringify({ type: errType, msg: errMsg, desc: errDesc })}`;
           }
           
           reject(new Error(errorMsg));
@@ -174,7 +189,11 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
         {t('remote.login_subtitle')}
       </p>
 
-      {error && <div className="auth-form-error">{error}</div>}
+      {error && (
+        <div className="auth-form-error" style={{ whiteSpace: 'pre-line', textAlign: 'left' }}>
+          {error}
+        </div>
+      )}
 
       <form className="auth-form" onSubmit={handleSubmit}>
         {/* Selector de método de conexión */}
@@ -267,23 +286,6 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
               autoComplete="current-password"
             />
           </div>
-        </div>
-
-        <div className="remote-warning-box" style={{ 
-          background: '#fff3cd', 
-          border: '1px solid #ffc107', 
-          borderRadius: '4px', 
-          padding: '12px', 
-          marginBottom: '15px',
-          fontSize: '13px'
-        }}>
-          <strong>⚠️ Antes de conectar, verifica:</strong>
-          <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
-            <li>El servidor remoto tiene el acceso remoto <strong>HABILITADO</strong></li>
-            <li>El servidor Socket.io está <strong>CORRIENDO</strong> en el puerto {connectionMethod === 'ip' ? port : '9999'}</li>
-            <li>No hay firewall bloqueando la conexión</li>
-            <li>La IP/URL es correcta y accesible desde tu red</li>
-          </ul>
         </div>
 
         <button

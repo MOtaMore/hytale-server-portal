@@ -79,10 +79,25 @@ export class RemoteSocketServer {
         cors: {
           origin: '*', // En producción, configurar dominios específicos
           methods: ['GET', 'POST'],
+          credentials: true,
         },
         pingTimeout: 60000,
         pingInterval: 25000,
         transports: ['websocket', 'polling'],
+        allowEIO3: true, // Compatibilidad con versiones antiguas
+      });
+
+      // Logs adicionales para debugging
+      this.io.engine.on('connection_error', (err: any) => {
+        console.error('[RemoteSocketServer] Engine connection error:', {
+          message: err.message,
+          code: err.code,
+          context: err.context,
+          req: err.req ? {
+            url: err.req.url,
+            headers: err.req.headers
+          } : undefined
+        });
       });
 
       // Middleware de autenticación - permite conexiones sin token para login
