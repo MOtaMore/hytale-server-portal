@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
+import { Socket } from 'socket.io-client';
 import './FileManager.css';
 
 interface FileInfo {
@@ -13,9 +14,11 @@ interface FileInfo {
 
 interface FileManagerProps {
   serverPath: string | null;
+  isRemoteMode?: boolean;
+  remoteSocket?: Socket | null;
 }
 
-export default function FileManager({ serverPath }: FileManagerProps) {
+export default function FileManager({ serverPath, isRemoteMode = false, remoteSocket = null }: FileManagerProps) {
   const t = (key: string) => I18nManager.t(key);
   const [rootPath, setRootPath] = useState<string>(''); // Ruta raíz (no se puede subir más)
   const [currentPath, setCurrentPath] = useState<string>('');

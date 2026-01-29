@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
+import { Socket } from 'socket.io-client';
 import './DiscordPanel.css';
 
 interface DiscordConfig {
@@ -12,7 +13,7 @@ interface DiscordConfig {
   channelNameOffline: string;
 }
 
-export const DiscordPanel: React.FC = () => {
+export const DiscordPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Socket | null}> = ({ isRemoteMode = false, remoteSocket = null }) => {
   const [config, setConfig] = useState<DiscordConfig>({
     enabled: false,
     botToken: '',

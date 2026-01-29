@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
+import { Socket } from 'socket.io-client';
 import './DownloadManager.css';
 
 interface DownloadState {
@@ -15,9 +16,11 @@ interface DownloadState {
 
 interface DownloadManagerProps {
   onComplete?: () => void;
+  isRemoteMode?: boolean;
+  remoteSocket?: Socket | null;
 }
 
-export default function DownloadManager({ onComplete }: DownloadManagerProps) {
+export default function DownloadManager({ onComplete, isRemoteMode = false, remoteSocket = null }: DownloadManagerProps) {
   const t = (key: string) => I18nManager.t(key);
   const [selectedPath, setSelectedPath] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -34,36 +37,55 @@ export default function DownloadManager({ onComplete }: DownloadManagerProps) {
   useEffect(() => {
     const loadSavedState = async () => {
       try {
-        const result = await window.electron.download.loadSavedState();
-        if (result.success && result.state) {
-          const saved = result.state;
-          setDownloadState(saved);
-          
-          // Restaurar el paso en el que estaba
-          if (saved.serverPath) {
-            setSelectedPath(saved.serverPath);
+        if (isRemoteMode && remoteSocket) {
+          // Modo remoto: obtener estado desde socket
+          console.log('[DownloadManager] Loading remote download state');
+          remoteSocket.emit('download:get-state', {}, (response: any) => {
+            if (response.success && response.state) {
+              const saved = response.state;
+              setDownloadState(saved);
+              if (saved.serverVersion) {
+                setServerVersion(saved.serverVersion);
+              }
+              if (saved.cliReady) {
+                setCliReady(true);
+                setSetupStep('download');
+              }
+            }
+          });
+        } else {
+          // Modo local: obtener estado desde electron
+          const result = await window.electron.download.loadSavedState();
+          if (result.success && result.state) {
+            const saved = result.state;
+            setDownloadState(saved);
             
-            // Detectar si el servidor ya está instalado
-            const isInstalledResult = await window.electron.files.isServerInstalled(saved.serverPath);
-            if (isInstalledResult.success && isInstalledResult.isInstalled) {
-              setCliReady(true);
-              setSetupStep('complete');
-              return;
+            // Restaurar el paso en el que estaba
+            if (saved.serverPath) {
+              setSelectedPath(saved.serverPath);
+              
+              // Detectar si el servidor ya está instalado
+              const isInstalledResult = await window.electron.files.isServerInstalled(saved.serverPath);
+              if (isInstalledResult.success && isInstalledResult.isInstalled) {
+                setCliReady(true);
+                setSetupStep('complete');
+                return;
+              }
             }
-          }
-          
-          if (saved.status && saved.status !== 'IDLE' && saved.status !== 'ERROR') {
-            if (saved.status === 'CLI_READY' || saved.status === 'COMPLETED') {
-              setCliReady(true);
-              setSetupStep('download');
-            } else if (saved.status === 'DOWNLOADING_SERVER' || saved.status === 'AUTHENTICATING') {
-              setCliReady(true);
-              setSetupStep('download');
+            
+            if (saved.status && saved.status !== 'IDLE' && saved.status !== 'ERROR') {
+              if (saved.status === 'CLI_READY' || saved.status === 'COMPLETED') {
+                setCliReady(true);
+                setSetupStep('download');
+              } else if (saved.status === 'DOWNLOADING_SERVER' || saved.status === 'AUTHENTICATING') {
+                setCliReady(true);
+                setSetupStep('download');
+              }
             }
-          }
-          
-          if (saved.serverVersion) {
-            setServerVersion(saved.serverVersion);
+            
+            if (saved.serverVersion) {
+              setServerVersion(saved.serverVersion);
+            }
           }
         }
       } catch (error) {
@@ -72,7 +94,7 @@ export default function DownloadManager({ onComplete }: DownloadManagerProps) {
     };
 
     loadSavedState();
-  }, []);
+  }, [isRemoteMode, remoteSocket]);
 
   // Guardar estado cuando cambia (para persistencia)
   useEffect(() => {

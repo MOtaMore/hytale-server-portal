@@ -188,19 +188,36 @@ export default function MainPage({ onLogout }: MainPageProps) {
             />
           )}
           {currentPanel === 'download' && (
-            <DownloadManager onComplete={() => alert('Download completed!')} />
+            <DownloadManager 
+              onComplete={() => alert('Download completed!')}
+              isRemoteMode={isRemoteSession}
+              remoteSocket={remoteSocket}
+            />
           )}
           {currentPanel === 'files' && (
-            <FileManager serverPath={serverPath} />
+            <FileManager 
+              serverPath={serverPath}
+              isRemoteMode={isRemoteSession}
+              remoteSocket={remoteSocket}
+            />
           )}
           {currentPanel === 'backup' && (
-            <BackupPanel />
+            <BackupPanel 
+              isRemoteMode={isRemoteSession}
+              remoteSocket={remoteSocket}
+            />
           )}
           {currentPanel === 'config' && (
-            <ConfigPanel />
+            <ConfigPanel 
+              isRemoteMode={isRemoteSession}
+              remoteSocket={remoteSocket}
+            />
           )}
           {currentPanel === 'discord' && (
-            <DiscordPanel />
+            <DiscordPanel 
+              isRemoteMode={isRemoteSession}
+              remoteSocket={remoteSocket}
+            />
           )}
           {currentPanel === 'remote' && (
             <RemoteAccessPanel t={I18nManager.t.bind(I18nManager)} />

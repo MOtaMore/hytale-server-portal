@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
+import { Socket } from 'socket.io-client';
 import './ConfigPanel.css';
 
 interface Config {
@@ -15,7 +16,7 @@ interface SystemResources {
   totalCPUs: number;
 }
 
-export const ConfigPanel: React.FC = () => {
+export const ConfigPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Socket | null}> = ({ isRemoteMode = false, remoteSocket = null }) => {
   const [config, setConfig] = useState<Config | null>(null);
   const [systemResources, setSystemResources] = useState<SystemResources | null>(null);
   const [loading, setLoading] = useState(true);
