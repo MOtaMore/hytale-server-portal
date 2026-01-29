@@ -28,6 +28,28 @@ export interface RemoteAccessPanelProps {
 }
 
 export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
+  // SECURITY: Verify this is NOT a remote session
+  const isRemoteSession = localStorage.getItem('remoteSession') !== null;
+  
+  if (isRemoteSession) {
+    console.error('[SECURITY] CRITICAL: Remote user tried to access RemoteAccessPanel!');
+    return (
+      <div style={{
+        background: '#dc3545',
+        color: 'white',
+        padding: '20px',
+        borderRadius: '8px',
+        textAlign: 'center'
+      }}>
+        <h2>🚫 Acceso Denegado</h2>
+        <p>Solo el administrador del servidor puede acceder a esta sección.</p>
+        <p style={{ fontSize: '12px', marginTop: '10px', opacity: 0.8 }}>
+          SECURITY: Este intento ha sido registrado.
+        </p>
+      </div>
+    );
+  }
+
   const [remoteEnabled, setRemoteEnabled] = useState(false);
   const [users, setUsers] = useState<RemoteUser[]>([]);
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);

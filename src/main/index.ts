@@ -638,9 +638,24 @@ function setupIPCListeners() {
     }
   });
 
+  /**
+   * SECURITY: Validation function to ensure remote: handlers are ONLY called from local session
+   * Remote users should NEVER be able to access these handlers
+   */
+  const validateLocalSessionOnly = (event: any): void => {
+    // Check if this is being called from a remote session
+    // The sender (webContents) should be from the local Electron window
+    // Remote connections go through Socket.io, NOT IPC
+    if (!mainWindow || event.sender !== mainWindow.webContents) {
+      console.error('[SECURITY] CRITICAL: Remote handler called from non-window context!');
+      throw new Error('SECURITY: Remote access handlers can only be called from local session');
+    }
+  };
+
   // IPC: Remote Access
-  ipcMain.handle('remote:get-config', async () => {
+  ipcMain.handle('remote:get-config', async (event) => {
     try {
+      validateLocalSessionOnly(event);
       if (!remoteAccessManager) {
         throw new Error('Remote access manager not initialized');
       }
@@ -652,6 +667,7 @@ function setupIPCListeners() {
 
   ipcMain.handle('remote:set-enabled', async (event, enabled: boolean) => {
     try {
+      validateLocalSessionOnly(event);
       if (!remoteAccessManager) {
         throw new Error('Remote access manager not initialized');
       }
@@ -677,8 +693,9 @@ function setupIPCListeners() {
     }
   });
 
-  ipcMain.handle('remote:get-users', async () => {
+  ipcMain.handle('remote:get-users', async (event) => {
     try {
+      validateLocalSessionOnly(event);
       if (!remoteAccessManager) {
         throw new Error('Remote access manager not initialized');
       }
@@ -690,6 +707,7 @@ function setupIPCListeners() {
 
   ipcMain.handle('remote:create-user', async (event, data: any) => {
     try {
+      validateLocalSessionOnly(event);
       if (!remoteAccessManager) {
         throw new Error('Remote access manager not initialized');
       }
@@ -702,6 +720,7 @@ function setupIPCListeners() {
 
   ipcMain.handle('remote:delete-user', async (event, userId: string) => {
     try {
+      validateLocalSessionOnly(event);
       if (!remoteAccessManager) {
         throw new Error('Remote access manager not initialized');
       }
@@ -712,8 +731,9 @@ function setupIPCListeners() {
     }
   });
 
-  ipcMain.handle('remote:get-permissions', async () => {
+  ipcMain.handle('remote:get-permissions', async (event) => {
     try {
+      validateLocalSessionOnly(event);
       const permissionsManager = PermissionsManager.getInstance();
       return permissionsManager.getAllPermissions();
     } catch (error: any) {
@@ -723,6 +743,7 @@ function setupIPCListeners() {
 
   ipcMain.handle('remote:get-preset-permissions', async (event, role: string) => {
     try {
+      validateLocalSessionOnly(event);
       const permissionsManager = PermissionsManager.getInstance();
       return permissionsManager.getPresetPermissions(role as any);
     } catch (error: any) {
@@ -732,6 +753,7 @@ function setupIPCListeners() {
 
   ipcMain.handle('remote:set-connection-methods', async (event, config: any) => {
     try {
+      validateLocalSessionOnly(event);
       if (!remoteAccessManager) {
         throw new Error('Remote access manager not initialized');
       }
@@ -777,8 +799,9 @@ function setupIPCListeners() {
   });
 
   // Nuevos handlers para Socket.io Server
-  ipcMain.handle('remote:get-server-status', async () => {
+  ipcMain.handle('remote:get-server-status', async (event) => {
     try {
+      validateLocalSessionOnly(event);
       if (!remoteSocketServer) {
         return { 
           running: false, 
@@ -801,6 +824,7 @@ function setupIPCListeners() {
 
   ipcMain.handle('remote:broadcast-event', async (event, eventName: string, data: any) => {
     try {
+      validateLocalSessionOnly(event);
       if (!remoteSocketServer || !remoteSocketServer.isServerRunning()) {
         throw new Error('Remote socket server not running');
       }
