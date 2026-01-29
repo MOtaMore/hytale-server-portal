@@ -212,6 +212,7 @@ export class PermissionsManager {
           'server.restart',
           'server.status',
           'server.logs',
+          'server.command',
           'config.read',
           'backup.create',
           'backup.list',
@@ -220,8 +221,8 @@ export class PermissionsManager {
         ];
 
       case 'viewer':
-        // Viewer solo puede ver estado y logs
-        return ['server.status', 'server.logs', 'config.read', 'backup.list', 'files.list'];
+        // Viewer solo puede ver estado, logs y enviar comandos
+        return ['server.status', 'server.logs', 'server.command', 'config.read', 'backup.list', 'files.list'];
 
       default:
         return [];
