@@ -371,6 +371,7 @@ export class RemoteSocketServer {
 
       // File commands
       'files:upload': 'files.upload',
+      'files:write': 'files.upload',
       'files:download': 'files.read',
       'files:delete': 'files.delete',
       'files:list': 'files.list',
@@ -499,12 +500,44 @@ export class RemoteSocketServer {
         }
 
         case 'files:upload': {
+          // Upload multiple files: { targetDir, files: [{name, content}] }
+          const [targetDir, filesData] = args;
+          if (!targetDir || !filesData || !Array.isArray(filesData)) {
+            throw new Error('Target directory and files array required');
+          }
+
+          const results: { uploaded: string[]; failed: Array<{ path: string; error: string }> } = { uploaded: [], failed: [] };
+          
+          for (const file of filesData) {
+            try {
+              const { name, content } = file;
+              if (!name || !content) {
+                results.failed.push({ path: name || 'unknown', error: 'Missing name or content' });
+                continue;
+              }
+
+              // Construir ruta del archivo
+              const filePath = `${targetDir}/${name}`.replace(/\/+/g, '/');
+              
+              // Decodificar base64 y guardar
+              const buffer = Buffer.from(content, 'base64');
+              this.handlers.fileManager.writeFileBuffer(filePath, buffer);
+              results.uploaded.push(filePath);
+            } catch (err: any) {
+              results.failed.push({ path: file.name, error: err.message });
+            }
+          }
+
+          return { success: results.failed.length === 0, ...results };
+        }
+
+        case 'files:write': {
           const [filePath, content] = args;
           if (!filePath || !content) {
             throw new Error('File path and content required');
           }
           this.handlers.fileManager.writeFile(filePath, content);
-          return { success: true, message: 'File uploaded' };
+          return { success: true, message: 'File saved' };
         }
 
         case 'files:download': {

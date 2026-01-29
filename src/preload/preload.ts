@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld('electron', {
   files: {
     list: (dirPath: string) => ipcRenderer.invoke('files:list', dirPath),
     read: (filePath: string) => ipcRenderer.invoke('files:read', filePath),
+    readBinary: (filePath: string) => ipcRenderer.invoke('files:read-binary', filePath),
     write: (filePath: string, content: string) => ipcRenderer.invoke('files:write', filePath, content),
     delete: (filePath: string) => ipcRenderer.invoke('files:delete', filePath),
     createDir: (dirPath: string) => ipcRenderer.invoke('files:create-dir', dirPath),
@@ -173,6 +174,7 @@ declare global {
       files: {
         list: (dirPath: string) => Promise<any>;
         read: (filePath: string) => Promise<any>;
+        readBinary: (filePath: string) => Promise<any>;
         write: (filePath: string, content: string) => Promise<any>;
         delete: (filePath: string) => Promise<any>;
         createDir: (dirPath: string) => Promise<any>;

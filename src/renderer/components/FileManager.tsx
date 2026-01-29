@@ -167,7 +167,7 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
       setError('');
 
       if (isRemoteMode && remoteSocket) {
-        await sendRemoteCommand(remoteSocket, 'files:upload', [selectedFile.path, fileContent]);
+        await sendRemoteCommand(remoteSocket, 'files:write', [selectedFile.path, fileContent]);
         setIsEditing(false);
         alert(t('files.file_saved'));
       } else {
@@ -228,27 +228,70 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
       setIsLoading(true);
       setError('');
 
-      try {
-        // Llamar al backend para copiar los archivos
-        const result = await window.electron.files.upload(currentPath, filePaths);
-
-        if (result.success || result.uploaded.length > 0) {
-          const uploadedCount = result.uploaded.length;
-          alert(`${uploadedCount} archivo(s) subido(s) exitosamente`);
-          loadFiles(currentPath);
-        } else if (result.failed.length > 0) {
-          const failedMsg = result.failed.map((f: any) => `${f.path}: ${f.error}`).join('\n');
-          setError(`Error al subir archivos:\n${failedMsg}`);
+      if (isRemoteMode && remoteSocket) {
+        // En modo remoto, leer archivos y enviar como base64
+        const fs = require('fs');
+        const filesData: Array<{ name: string; content: string }> = [];
+        
+        for (const filePath of filePaths) {
+          try {
+            const fileName = filePath.split(/[\\/]/).pop() || filePath;
+            const buffer = await window.electron.files.readBinary(filePath);
+            // Convertir buffer a base64 para transmisión
+            const base64Content = Buffer.from(buffer).toString('base64');
+            filesData.push({ name: fileName, content: base64Content });
+          } catch (err: any) {
+            setError(`Error reading file ${filePath}: ${err.message}`);
+            continue;
+          }
         }
-      } catch (err: any) {
-        setError(err.message || 'Error al subir archivos');
-      } finally {
-        setIsLoading(false);
+
+        if (filesData.length === 0) {
+          setError('No files could be read');
+          return;
+        }
+
+        try {
+          const result = await sendRemoteCommand<any>(
+            remoteSocket,
+            'files:upload',
+            [currentPath, filesData]
+          );
+
+          if (result.success || result.uploaded.length > 0) {
+            const uploadedCount = result.uploaded.length;
+            alert(`${uploadedCount} archivo(s) subido(s) exitosamente`);
+            loadFiles(currentPath);
+          } else if (result.failed && result.failed.length > 0) {
+            const failedMsg = result.failed.map((f: any) => `${f.path}: ${f.error}`).join('\n');
+            setError(`Error al subir archivos:\n${failedMsg}`);
+          }
+        } catch (err: any) {
+          setError(err.message || 'Error al subir archivos al servidor remoto');
+        }
+      } else {
+        // Local: usar Electron IPC
+        try {
+          const result = await window.electron.files.upload(currentPath, filePaths);
+
+          if (result.success || result.uploaded.length > 0) {
+            const uploadedCount = result.uploaded.length;
+            alert(`${uploadedCount} archivo(s) subido(s) exitosamente`);
+            loadFiles(currentPath);
+          } else if (result.failed.length > 0) {
+            const failedMsg = result.failed.map((f: any) => `${f.path}: ${f.error}`).join('\n');
+            setError(`Error al subir archivos:\n${failedMsg}`);
+          }
+        } catch (err: any) {
+          setError(err.message || 'Error al subir archivos');
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Error al seleccionar archivos');
+    } finally {
+      setIsLoading(false);
     }
-  }, [currentPath, loadFiles, t]);
+  }, [currentPath, loadFiles, t, isRemoteMode, remoteSocket]);
 
   /**
    * Formatea el tamaño del archivo

@@ -146,6 +146,33 @@ export class FileManager {
   }
 
   /**
+   * Escribe contenido binario (buffer) en un archivo
+   */
+  static writeFileBuffer(filePath: string, buffer: Buffer): boolean {
+    try {
+      // Validar que no sea un archivo protegido
+      const fileName = path.basename(filePath);
+      if (this.isProtectedFile(fileName)) {
+        throw new Error('Cannot write to protected file: ' + fileName);
+      }
+
+      // Crear directorio padre si no existe
+      const dirPath = path.dirname(filePath);
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
+      }
+
+      fs.writeFileSync(filePath, buffer);
+      console.log('Binary file written:', filePath);
+
+      return true;
+    } catch (error: any) {
+      console.error('Error writing binary file:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Elimina un archivo o directorio
    */
   static deleteFile(filePath: string): boolean {

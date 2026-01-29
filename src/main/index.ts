@@ -399,6 +399,16 @@ function setupIPCListeners() {
     }
   });
 
+  ipcMain.handle('files:read-binary', async (event, filePath: string) => {
+    try {
+      const fs = require('fs');
+      const buffer = fs.readFileSync(filePath);
+      return buffer;
+    } catch (error: any) {
+      throw new Error(`Cannot read file: ${error.message}`);
+    }
+  });
+
   ipcMain.handle('files:write', async (event, filePath: string, content: string) => {
     try {
       const result = FileManager.writeFile(filePath, content);
