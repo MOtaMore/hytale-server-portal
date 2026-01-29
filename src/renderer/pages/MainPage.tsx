@@ -215,12 +215,14 @@ export default function MainPage({ onLogout, sessionType }: MainPageProps) {
           >
             💬 {I18nManager.t('discord.title')}
           </button>
-          <button
-            className={`nav-item ${currentPanel === 'remote' ? 'active' : ''}`}
-            onClick={() => setCurrentPanel('remote')}
-          >
-            🌐 Acceso Remoto
-          </button>
+          {!isRemoteSession && (
+            <button
+              className={`nav-item ${currentPanel === 'remote' ? 'active' : ''}`}
+              onClick={() => setCurrentPanel('remote')}
+            >
+              🌐 Acceso Remoto
+            </button>
+          )}
         </nav>
 
         <div className="sidebar-footer">
@@ -283,7 +285,7 @@ export default function MainPage({ onLogout, sessionType }: MainPageProps) {
               remoteSocket={remoteSocket}
             />
           )}
-          {currentPanel === 'remote' && (
+          {currentPanel === 'remote' && !isRemoteSession && (
             <RemoteAccessPanel t={I18nManager.t.bind(I18nManager)} />
           )}
         </div>
