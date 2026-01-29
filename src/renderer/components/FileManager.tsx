@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
 import { Socket } from 'socket.io-client';
+import { sendRemoteCommand } from '../utils/remoteCommand';
 import './FileManager.css';
 
 interface FileInfo {
@@ -46,20 +47,26 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
       setIsLoading(true);
       setError('');
 
-      const result = await window.electron.files.list(dirPath);
-
-      if (result.success) {
-        setFiles(result.files);
+      if (isRemoteMode && remoteSocket) {
+        const files = await sendRemoteCommand<FileInfo[]>(remoteSocket, 'files:list', [dirPath]);
+        setFiles(files || []);
         setCurrentPath(dirPath);
       } else {
-        setError(result.error || 'Error al cargar archivos');
+        const result = await window.electron.files.list(dirPath);
+
+        if (result.success) {
+          setFiles(result.files);
+          setCurrentPath(dirPath);
+        } else {
+          setError(result.error || 'Error al cargar archivos');
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Error al cargar archivos');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isRemoteMode, remoteSocket]);
 
   /**
    * Navega a un directorio
@@ -104,31 +111,50 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
       setIsLoading(true);
       setError('');
 
-      // Verificar si es editable
-      const editableResult = await window.electron.files.isEditable(file.path);
+      if (isRemoteMode && remoteSocket) {
+        const editable = await sendRemoteCommand<{ isEditable: boolean }>(
+          remoteSocket,
+          'files:is-editable',
+          [file.path]
+        );
 
-      if (!editableResult.isEditable) {
-        setError(t('files.not_editable'));
+        if (!editable.isEditable) {
+          setError(t('files.not_editable'));
+          setSelectedFile(file);
+          return;
+        }
+
+        const content = await sendRemoteCommand<string>(remoteSocket, 'files:download', [file.path]);
         setSelectedFile(file);
-        return;
-      }
-
-      // Leer contenido
-      const result = await window.electron.files.read(file.path);
-
-      if (result.success) {
-        setSelectedFile(file);
-        setFileContent(result.content.content);
+        setFileContent(content);
         setIsEditing(false);
       } else {
-        setError(result.error || 'Error al leer archivo');
+        // Verificar si es editable
+        const editableResult = await window.electron.files.isEditable(file.path);
+
+        if (!editableResult.isEditable) {
+          setError(t('files.not_editable'));
+          setSelectedFile(file);
+          return;
+        }
+
+        // Leer contenido
+        const result = await window.electron.files.read(file.path);
+
+        if (result.success) {
+          setSelectedFile(file);
+          setFileContent(result.content.content);
+          setIsEditing(false);
+        } else {
+          setError(result.error || 'Error al leer archivo');
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Error al leer archivo');
     } finally {
       setIsLoading(false);
     }
-  }, [t]);
+  }, [t, isRemoteMode, remoteSocket]);
 
   /**
    * Guarda cambios en el archivo
@@ -140,20 +166,26 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
       setIsLoading(true);
       setError('');
 
-      const result = await window.electron.files.write(selectedFile.path, fileContent);
-
-      if (result.success) {
+      if (isRemoteMode && remoteSocket) {
+        await sendRemoteCommand(remoteSocket, 'files:upload', [selectedFile.path, fileContent]);
         setIsEditing(false);
         alert(t('files.file_saved'));
       } else {
-        setError(result.error || 'Error al guardar archivo');
+        const result = await window.electron.files.write(selectedFile.path, fileContent);
+
+        if (result.success) {
+          setIsEditing(false);
+          alert(t('files.file_saved'));
+        } else {
+          setError(result.error || 'Error al guardar archivo');
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Error al guardar archivo');
     } finally {
       setIsLoading(false);
     }
-  }, [selectedFile, fileContent, t]);
+  }, [selectedFile, fileContent, t, isRemoteMode, remoteSocket]);
 
   /**
    * Elimina un archivo

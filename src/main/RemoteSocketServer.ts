@@ -12,6 +12,8 @@ import { ConfigManager } from '../shared/services/ConfigManager';
 import { BackupManager } from '../shared/services/BackupManager';
 import { FileManager } from '../shared/services/FileManager';
 import { DiscordManager } from '../shared/services/DiscordManager';
+import { SecureStorageManager } from '../shared/utils/SecureStorageManager';
+import { DownloadManager } from '../shared/services/DownloadManager';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -352,29 +354,42 @@ export class RemoteSocketServer {
       'server:start': 'server.start',
       'server:stop': 'server.stop',
       'server:restart': 'server.restart',
-      'server:status': 'server.view_status',
-      'server:logs': 'server.view_logs',
+      'server:status': 'server.status',
+      'server:logs': 'server.logs',
+      'server:path': 'server.status',
 
       // Config commands
       'config:read': 'config.read',
       'config:write': 'config.write',
+      'config:system-resources': 'config.read',
 
       // Backup commands
       'backup:create': 'backup.create',
       'backup:restore': 'backup.restore',
-      'backup:list': 'backup.view',
+      'backup:list': 'backup.list',
       'backup:delete': 'backup.delete',
 
       // File commands
       'files:upload': 'files.upload',
-      'files:download': 'files.download',
+      'files:download': 'files.read',
       'files:delete': 'files.delete',
-      'files:list': 'files.view',
+      'files:list': 'files.list',
+      'files:is-editable': 'files.read',
+      'files:info': 'files.read',
+
+      // Download commands
+      'download:get-state': 'server.status',
+      'download:setup-folder': 'server.start',
+      'download:check-version': 'server.status',
+      'download:start': 'server.start',
+      'download:reset': 'server.start',
+      'download:extract': 'server.start',
 
       // Discord commands
-      'discord:send': 'discord.send_messages',
-      'discord:configure': 'discord.configure',
-      'discord:view': 'discord.view',
+      'discord:send': 'discord.config',
+      'discord:configure': 'discord.config',
+      'discord:view': 'discord.config',
+      'discord:test': 'discord.config',
     };
 
     return permissionMap[command] || null;
@@ -417,10 +432,24 @@ export class RemoteSocketServer {
           return { logs };
         }
 
+        case 'server:path': {
+          const serverPath = SecureStorageManager.getServerPath();
+          if (!serverPath) {
+            throw new Error('Server path not configured');
+          }
+          return { serverPath };
+        }
+
         // ========== CONFIG COMMANDS ==========
         case 'config:read': {
           const config = await this.handlers.configManager.readConfig();
           return config;
+        }
+
+        case 'config:system-resources': {
+          const configManager = new ConfigManager('');
+          const resources = configManager.getSystemResources();
+          return resources;
         }
 
         case 'config:write': {
@@ -487,6 +516,24 @@ export class RemoteSocketServer {
           return content;
         }
 
+        case 'files:is-editable': {
+          const [filePath] = args;
+          if (!filePath) {
+            throw new Error('File path required');
+          }
+          const isEditable = this.handlers.fileManager.isEditableFile(filePath);
+          return { isEditable };
+        }
+
+        case 'files:info': {
+          const [filePath] = args;
+          if (!filePath) {
+            throw new Error('File path required');
+          }
+          const info = this.handlers.fileManager.getFileInfo(filePath);
+          return { info };
+        }
+
         case 'files:delete': {
           const [filePath] = args;
           if (!filePath) {
@@ -494,6 +541,53 @@ export class RemoteSocketServer {
           }
           this.handlers.fileManager.deleteFile(filePath);
           return { success: true, message: 'File deleted' };
+        }
+
+        // ========== DOWNLOAD COMMANDS ==========
+        case 'download:get-state': {
+          const state = DownloadManager.getState();
+          return state;
+        }
+
+        case 'download:setup-folder': {
+          const [serverPath] = args;
+          if (!serverPath) {
+            throw new Error('Server path required');
+          }
+          const result = await DownloadManager.setupServerFolder(serverPath);
+          return { success: result };
+        }
+
+        case 'download:check-version': {
+          const [serverPath] = args;
+          if (!serverPath) {
+            throw new Error('Server path required');
+          }
+          const version = await DownloadManager.checkServerVersion(serverPath);
+          return { serverVersion: version };
+        }
+
+        case 'download:start': {
+          const [serverPath] = args;
+          if (!serverPath) {
+            throw new Error('Server path required');
+          }
+          await DownloadManager.downloadServer(serverPath);
+          return { success: true };
+        }
+
+        case 'download:extract': {
+          const [serverPath] = args;
+          if (!serverPath) {
+            throw new Error('Server path required');
+          }
+          const extracted = await DownloadManager.extractServer(serverPath);
+          return { success: extracted };
+        }
+
+        case 'download:reset': {
+          DownloadManager.resetDownloadState();
+          return { success: true };
         }
 
         // ========== DISCORD COMMANDS ==========
@@ -515,6 +609,14 @@ export class RemoteSocketServer {
           }
           await this.handlers.discordManager.saveConfig(config);
           return { success: true, message: 'Discord config saved' };
+        }
+
+        case 'discord:test': {
+          if (!this.handlers.discordManager) {
+            throw new Error('Discord manager not initialized');
+          }
+          const result = await this.handlers.discordManager.testConnection();
+          return result;
         }
 
         case 'discord:send': {

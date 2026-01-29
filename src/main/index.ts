@@ -817,6 +817,10 @@ function setupServerStatusListener() {
     if (mainWindow) {
       mainWindow.webContents.send('server:status-changed', state);
     }
+
+    if (remoteSocketServer) {
+      remoteSocketServer.broadcastEvent('server:status-changed', state);
+    }
     
     // Notificar a Discord cuando el estado cambia
     if (discordManager) {
@@ -832,6 +836,9 @@ function setupServerStatusListener() {
     if (mainWindow) {
       mainWindow.webContents.send('backup:status', message);
     }
+    if (remoteSocketServer) {
+      remoteSocketServer.broadcastEvent('backup:status', message);
+    }
   });
 
   // Polling para detectar nuevos logs y notificar al frontend
@@ -841,6 +848,9 @@ function setupServerStatusListener() {
       lastLogCount = logs.length;
       if (mainWindow) {
         mainWindow.webContents.send('server:logs-updated', logs);
+      }
+      if (remoteSocketServer) {
+        remoteSocketServer.broadcastEvent('server:logs-updated', logs);
       }
     }
   }, 250); // Enviar eventos cada 250ms si hay cambios

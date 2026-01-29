@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
 import { Socket } from 'socket.io-client';
+import { sendRemoteCommand } from '../utils/remoteCommand';
 import './ServerControlPanel.css';
 
 interface ServerControlPanelProps {
@@ -40,12 +41,21 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
 
       // Solicitar estado inicial si ya está conectado
       if (remoteSocket.connected) {
-        remoteSocket.emit('server:get-status', {}, (response: any) => {
-          if (response.success) {
-            setStatus(response.data.status);
-            setLogs(response.data.logs || []);
-          }
-        });
+        sendRemoteCommand<any>(remoteSocket, 'server:status')
+          .then((response) => {
+            setStatus(response.status);
+          })
+          .catch((error) => {
+            console.error('[ServerControlPanel] Failed to load status:', error.message);
+          });
+
+        sendRemoteCommand<any>(remoteSocket, 'server:logs')
+          .then((response) => {
+            setLogs(response.logs || []);
+          })
+          .catch((error) => {
+            console.error('[ServerControlPanel] Failed to load logs:', error.message);
+          });
       }
 
       // Configurar listeners
@@ -61,12 +71,21 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
 
       const onConnect = () => {
         console.log('[ServerControlPanel] Socket connected, fetching status');
-        remoteSocket.emit('server:get-status', {}, (response: any) => {
-          if (response.success) {
-            setStatus(response.data.status);
-            setLogs(response.data.logs || []);
-          }
-        });
+        sendRemoteCommand<any>(remoteSocket, 'server:status')
+          .then((response) => {
+            setStatus(response.status);
+          })
+          .catch((error) => {
+            console.error('[ServerControlPanel] Failed to load status:', error.message);
+          });
+
+        sendRemoteCommand<any>(remoteSocket, 'server:logs')
+          .then((response) => {
+            setLogs(response.logs || []);
+          })
+          .catch((error) => {
+            console.error('[ServerControlPanel] Failed to load logs:', error.message);
+          });
       };
 
       remoteSocket.on('connect', onConnect);
@@ -145,14 +164,15 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
     try {
       if (isRemoteMode && remoteSocket) {
         // Usar socket remoto
-        remoteSocket.emit('server:start', {}, (response: any) => {
-          if (response.success) {
-            setStatus(response.data.status);
-          } else {
-            alert(`${I18nManager.t('server.error')}: ${response.error || 'Unknown error'}`);
-          }
-          setIsLoading(false);
-        });
+        sendRemoteCommand(remoteSocket, 'server:start')
+          .then(async () => {
+            const statusResponse = await sendRemoteCommand<any>(remoteSocket, 'server:status');
+            setStatus(statusResponse.status);
+          })
+          .catch((error) => {
+            alert(`${I18nManager.t('server.error')}: ${error.message}`);
+          })
+          .finally(() => setIsLoading(false));
       } else {
         // Modo local (IPC)
         const result = await window.electron.server.start();
@@ -176,14 +196,15 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
     try {
       if (isRemoteMode && remoteSocket) {
         // Usar socket remoto
-        remoteSocket.emit('server:stop', {}, (response: any) => {
-          if (response.success) {
-            setStatus(response.data.status);
-          } else {
-            alert(`${I18nManager.t('server.error')}: ${response.error || 'Unknown error'}`);
-          }
-          setIsLoading(false);
-        });
+        sendRemoteCommand(remoteSocket, 'server:stop')
+          .then(async () => {
+            const statusResponse = await sendRemoteCommand<any>(remoteSocket, 'server:status');
+            setStatus(statusResponse.status);
+          })
+          .catch((error) => {
+            alert(`${I18nManager.t('server.error')}: ${error.message}`);
+          })
+          .finally(() => setIsLoading(false));
       } else {
         // Modo local (IPC)
         const result = await window.electron.server.stop();
@@ -207,14 +228,15 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
     try {
       if (isRemoteMode && remoteSocket) {
         // Usar socket remoto
-        remoteSocket.emit('server:restart', {}, (response: any) => {
-          if (response.success) {
-            setStatus(response.data.status);
-          } else {
-            alert(`${I18nManager.t('server.error')}: ${response.error || 'Unknown error'}`);
-          }
-          setIsLoading(false);
-        });
+        sendRemoteCommand(remoteSocket, 'server:restart')
+          .then(async () => {
+            const statusResponse = await sendRemoteCommand<any>(remoteSocket, 'server:status');
+            setStatus(statusResponse.status);
+          })
+          .catch((error) => {
+            alert(`${I18nManager.t('server.error')}: ${error.message}`);
+          })
+          .finally(() => setIsLoading(false));
       } else {
         // Modo local (IPC)
         const result = await window.electron.server.restart();

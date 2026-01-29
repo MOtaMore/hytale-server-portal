@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { I18nManager } from '../../shared/i18n/I18nManager';
 import { io, Socket } from 'socket.io-client';
+import { sendRemoteCommand } from '../utils/remoteCommand';
 import ServerControlPanel from '../components/ServerControlPanel';
 import DownloadManager from '../components/DownloadManager';
 import FileManager from '../components/FileManager';
@@ -117,6 +118,20 @@ export default function MainPage({ onLogout, sessionType }: MainPageProps) {
       remoteSocket.off('connect_error', onConnectError);
     };
   }, [remoteSocket]);
+
+  useEffect(() => {
+    if (!isRemoteSession || !remoteSocket) {
+      return;
+    }
+
+    sendRemoteCommand<{ serverPath: string }>(remoteSocket, 'server:path')
+      .then((result) => {
+        setServerPath(result.serverPath);
+      })
+      .catch((error) => {
+        console.error('[MainPage] Failed to load remote server path:', error.message);
+      });
+  }, [isRemoteSession, remoteSocket]);
 
   useEffect(() => {
     if (sessionType !== 'remote' && remoteSocket) {
