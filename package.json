@@ -8,6 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:preload\" \"npm run dev:renderer\" \"npm run dev:electron\"",
+    "dev:nogpu": "DISABLE_GPU=1 concurrently \"npm run dev:main\" \"npm run dev:preload\" \"npm run dev:renderer\" \"npm run dev:electron\"",
     "dev:main": "webpack --config webpack.main.js --watch --mode development",
     "dev:preload": "webpack --config webpack.preload.js --watch --mode development",
     "dev:renderer": "webpack serve --config webpack.renderer.js --mode development",

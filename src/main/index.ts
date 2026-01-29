@@ -17,6 +17,11 @@ import { RemoteSocketServer } from './RemoteSocketServer';
 // Properly check if running in development
 const isDevMode = (isDev as any) === true || (isDev as any).default === true;
 
+// Desabilitar GPU si hay problemas en ciertos sistemas
+if (process.env.DISABLE_GPU === '1' || process.platform === 'linux') {
+  app.disableHardwareAcceleration();
+}
+
 let mainWindow: BrowserWindow | null = null;
 let discordManager: DiscordManager | null = null;
 let remoteAccessManager: RemoteAccessManager | null = null;
