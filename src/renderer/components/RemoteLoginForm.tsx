@@ -71,7 +71,7 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
       // Crear conexión Socket.io sin token (para login)
       socket = io(connectionString, {
         transports: ['websocket', 'polling'],
-        timeout: 10000,
+        timeout: 30000, // 30 segundos para timeouts más largos
         reconnection: false,
         autoConnect: false, // No conectar automáticamente
       });
@@ -124,7 +124,9 @@ export default function RemoteLoginForm({ onSuccess }: RemoteLoginFormProps) {
           
           console.log('[RemoteLoginForm] Error string analysis:', { errMsg, errDesc, errType });
           
-          if (errMsg.includes('ECONNREFUSED') || errDesc.includes('ECONNREFUSED')) {
+          if (errMsg.includes('timeout') || errMsg === 'timeout') {
+            errorMsg += `Tiempo de espera agotado (${30}s). El servidor no responde.\n\nVerifica:\n• El servidor está corriendo en ${connectionString}\n• El puerto está abierto/accesible\n• No hay firewall bloqueando la conexión`;
+          } else if (errMsg.includes('ECONNREFUSED') || errDesc.includes('ECONNREFUSED')) {
             errorMsg += 'No se pudo conectar al servidor. Verifica la IP y el puerto.';
           } else if (errMsg.includes('ETIMEDOUT') || errDesc.includes('ETIMEDOUT')) {
             errorMsg += 'Tiempo de espera agotado. El servidor no responde.';
