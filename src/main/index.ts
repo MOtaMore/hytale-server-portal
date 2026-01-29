@@ -40,7 +40,7 @@ function createWindow() {
     icon: path.join(__dirname, '../../resources/icons/icon.png'),
   });
 
-  // Configurar CSP para permitir conexiones WebSocket remotas
+  // Configurar CSP para desarrollo (HTTP)
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
