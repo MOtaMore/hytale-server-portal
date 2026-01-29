@@ -47,7 +47,7 @@ function createWindow() {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           "default-src 'self'; " +
-          "script-src 'self' 'unsafe-inline'; " +
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
           "style-src 'self' 'unsafe-inline'; " +
           "connect-src 'self' ws: wss: http: https:; " +
           "img-src 'self' data: file:; " +
