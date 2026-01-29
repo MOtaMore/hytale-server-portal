@@ -93,7 +93,7 @@ setup-amd.bat
 O manualmente:
 ```bash
 npm run rebuild
-npm run dev
+npm run dev:amd
 ```
 
 Para más detalles, ver [SETUP_AMD.md](SETUP_AMD.md)
@@ -122,7 +122,8 @@ Para más detalles, ver [SETUP_AMD.md](SETUP_AMD.md)
 
 ```bash
 # Desarrollo
-npm run dev              # Inicia webpack + electron (recomendado)
+npm run dev              # Inicia webpack + electron (recomendado para Intel)
+npm run dev:amd          # RECOMENDADO para procesadores AMD (sin sandbox)
 npm run dev:main        # Compila main process en watch mode
 npm run dev:renderer    # Inicia webpack dev server para renderer
 npm run dev:nogpu       # Dev sin aceleración GPU (para problemas de compatibilidad)

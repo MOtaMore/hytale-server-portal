@@ -8,11 +8,13 @@
   "scripts": {
     "start": "electron .",
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:preload\" \"npm run dev:renderer\" \"npm run dev:electron\"",
+    "dev:amd": "concurrently \"npm run dev:main\" \"npm run dev:preload\" \"npm run dev:renderer\" \"npm run dev:electron:amd\"",
     "dev:nogpu": "concurrently \"npm run dev:main\" \"npm run dev:preload\" \"npm run dev:renderer\" \"npm run dev:electron:nogpu\"",
     "dev:main": "webpack --config webpack.main.js --watch --mode development",
     "dev:preload": "webpack --config webpack.preload.js --watch --mode development",
     "dev:renderer": "webpack serve --config webpack.renderer.js --mode development",
     "dev:electron": "wait-on dist/main/index.js dist/preload/preload.js && electron . --disable-gpu --disable-software-rasterizer --remote-debugging-port=9222",
+    "dev:electron:amd": "wait-on dist/main/index.js dist/preload/preload.js && electron . --disable-gpu --disable-software-rasterizer --no-sandbox --disable-dev-shm-usage --remote-debugging-port=9222",
     "dev:electron:nogpu": "wait-on dist/main/index.js dist/preload/preload.js && electron . --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage --no-sandbox --remote-debugging-port=9222",
     "rebuild": "npm run rebuild:all",
     "rebuild:all": "npm run rebuild:native && npm install",

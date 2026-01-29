@@ -22,8 +22,9 @@ call npm run rebuild:native
 if %ERRORLEVEL% NEQ 0 (
     echo ❌ Error durante la recompilación
     echo.
-    echo Intenta en modo sin GPU:
-    echo   npm run dev:nogpu
+    echo Intenta ejecutar de todas formas:
+    echo   npm run dev:amd    (RECOMENDADO para AMD)
+    echo   npm run dev:nogpu  (alternativa)
     pause
     exit /b 1
 )
@@ -44,7 +45,7 @@ echo.
 echo ✅ ¡Configuración completada!
 echo.
 echo Ahora puedes ejecutar:
-echo   npm run dev        (con GPU)
-echo   npm run dev:nogpu  (sin GPU - para problemas de compatibilidad)
+echo   npm run dev:amd    (RECOMENDADO para AMD - sin sandbox)
+echo   npm run dev:nogpu  (alternativa sin GPU)
 echo.
 pause

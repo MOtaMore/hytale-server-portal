@@ -17,8 +17,15 @@ npm install
 
 ### 2. Iniciar en modo desarrollo
 ```bash
-npm run dev
+npm run dev:amd
 ```
+
+O si prefieres sin GPU:
+```bash
+npm run dev:nogpu
+```
+
+**IMPORTANTE**: En AMD, NO uses `npm run dev` (puede fallar con errores de sandbox). Usa siempre `npm run dev:amd`.
 
 ## 🛠️ ¿Qué hace `npm run rebuild`?
 
@@ -28,18 +35,23 @@ npm run dev
 
 ## 🚨 Si aún no funciona
 
-Si después de `npm run rebuild` sigue sin funcionar, intenta con:
+Si después de `npm run rebuild` ves un error de "chrome-sandbox", usa:
 
 ```bash
-npm run dev:nogpu
+npm run dev:amd
 ```
 
 Este comando:
+- Deshabilita el sandbox de Chrome (soluciona errores de permisos en Linux)
 - Deshabilita aceleración GPU
 - Deshabilita rasterizado por software
 - Desabilita uso de memoria compartida
-- Ejecuta sin sandbox
-- Esto puede ser más compatible con AMD
+- **Optimizado específicamente para procesadores AMD**
+
+Alternativa con menos optimizaciones:
+```bash
+npm run dev:nogpu
+```
 
 ## 📋 Requisitos del Sistema
 
@@ -72,7 +84,12 @@ Después de `npm run rebuild`, deberías ver:
 Si ves esto, la recompilación fue exitosa. Ahora puedes:
 
 ```bash
-npm run dev
+npm run dev:amd
+```
+
+**O también:**
+```bash
+npm run dev:nogpu
 ```
 
 ## 🐛 Debugging
