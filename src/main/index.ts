@@ -40,22 +40,8 @@ function createWindow() {
     icon: path.join(__dirname, '../../resources/icons/icon.png'),
   });
 
-  // Configurar CSP para desarrollo (HTTP)
-  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self'; " +
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-          "style-src 'self' 'unsafe-inline'; " +
-          "connect-src 'self' ws: wss: http: https: *; " +
-          "img-src 'self' data: file:; " +
-          "font-src 'self' data:;"
-        ]
-      }
-    });
-  });
+  // CSP is configured via meta tag in index.html
+  // This works for both dev (HTTP) and production (file://)
 
   if (isDevMode) {
     mainWindow.loadURL('http://localhost:3000');

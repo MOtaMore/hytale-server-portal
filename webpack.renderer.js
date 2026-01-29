@@ -44,10 +44,8 @@ module.exports = {
       template: './src/renderer/index.html',
       filename: 'index.html',
       meta: {
-        'Content-Security-Policy': {
-          'http-equiv': 'Content-Security-Policy',
-          'content': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
-        }
+        // Note: CSP is fully defined in src/renderer/index.html meta tag
+        // HtmlWebpackPlugin meta is intentionally empty to avoid conflicts
       }
     }),
     new CopyWebpackPlugin({
