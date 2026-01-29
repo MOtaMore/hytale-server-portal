@@ -16,7 +16,7 @@
     "dev:electron:nogpu": "wait-on dist/main/index.js dist/preload/preload.js && electron . --disable-gpu --disable-software-rasterizer --disable-dev-shm-usage --no-sandbox --remote-debugging-port=9222",
     "rebuild": "npm run rebuild:all",
     "rebuild:all": "npm run rebuild:native && npm install",
-    "rebuild:native": "electron-rebuild -f -w socket.io,bcryptjs",
+    "rebuild:native": "npx electron-rebuild -f -w socket.io,bcryptjs",
     "build": "npm run build:main && npm run build:preload && npm run build:renderer",
     "build:main": "webpack --config webpack.main.js --mode production",
     "build:preload": "webpack --config webpack.preload.js --mode production",
