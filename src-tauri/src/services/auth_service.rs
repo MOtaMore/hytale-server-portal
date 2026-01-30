@@ -95,8 +95,9 @@ impl AuthService {
         let mut stmt = conn.prepare(
             "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)"
         )?;
-        stmt.execute(rusqlite::params![&id, username, email, &password_hash, &created_at])?;
-        eprintln!("[AUTH] User inserted into DB");
+        let rows = stmt.execute(rusqlite::params![&id, username, email, &password_hash, &created_at])?;
+        eprintln!("[AUTH] User inserted into DB, rows affected: {}", rows);
+        eprintln!("[AUTH] User ID: {}", id);
         
         // Create session for the newly registered user
         let session_token = uuid::Uuid::new_v4().to_string();
@@ -106,8 +107,10 @@ impl AuthService {
         let mut session_stmt = conn.prepare(
             "INSERT INTO sessions (session_token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
         )?;
-        session_stmt.execute(rusqlite::params![&session_token, &id, &session_created_at, &expires_at])?;
-        eprintln!("[AUTH] Session created for user: {}", username);
+        let session_rows = session_stmt.execute(rusqlite::params![&session_token, &id, &session_created_at, &expires_at])?;
+        eprintln!("[AUTH] Session created for user: {}, rows affected: {}", username, session_rows);
+        eprintln!("[AUTH] Session token: {}", session_token);
+        eprintln!("[AUTH] Expires at: {}", expires_at);
         
         Ok(AuthResultUser {
             id,
@@ -156,8 +159,10 @@ impl AuthService {
         let mut session_stmt = conn.prepare(
             "INSERT INTO sessions (session_token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
         )?;
-        session_stmt.execute(rusqlite::params![&session_token, &id, &session_created_at, &expires_at])?;
-        eprintln!("[AUTH] Session created for user: {}", username);
+        let session_rows = session_stmt.execute(rusqlite::params![&session_token, &id, &session_created_at, &expires_at])?;
+        eprintln!("[AUTH] Session created for user: {}, rows affected: {}", username, session_rows);
+        eprintln!("[AUTH] Session token: {}", session_token);
+        eprintln!("[AUTH] Expires at: {}", expires_at);
         
         Ok(AuthResultUser { id, username, email, session_token })
     }
@@ -185,6 +190,15 @@ impl AuthService {
         
         // Check if there's a valid active session
         let now = chrono::Utc::now().to_rfc3339();
+        eprintln!("[AUTH] Checking for active sessions at: {}", now);
+        
+        // First check how many sessions exist
+        let session_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sessions",
+            [],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        eprintln!("[AUTH] Total sessions in DB: {}", session_count);
         
         let result = conn.query_row(
             "SELECT u.id, u.username, u.email FROM users u 
@@ -204,8 +218,8 @@ impl AuthService {
                 eprintln!("[AUTH] Active session found for user: {}", user.username);
                 Ok(Some(user))
             }
-            Err(_) => {
-                eprintln!("[AUTH] No active session found");
+            Err(e) => {
+                eprintln!("[AUTH] No active session found. Error: {}", e);
                 Ok(None)
             }
         }
