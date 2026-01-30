@@ -21,8 +21,8 @@ export const BackupPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Socke
 
   const loadBackups = async () => {
     try {
-      const result = await window.electron.invoke('backup:list');
-      setBackups(result);
+      const result = (await window.electron.backup.list()) as any;
+      setBackups(result || []);
     } catch (error: any) {
       setStatusMessage(`Error: ${error.message}`);
     }
@@ -33,7 +33,7 @@ export const BackupPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Socke
     setStatusMessage('Creating backup...');
     try {
       const isFull = backupType === 'full';
-      await window.electron.invoke('backup:create', backupName || undefined, isFull);
+      await window.electron.backup.create(backupName || undefined);
       setStatusMessage(`${isFull ? 'Full' : 'Selective'} backup created successfully!`);
       setBackupName('');
       await loadBackups();
@@ -52,7 +52,7 @@ export const BackupPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Socke
     setLoading(true);
     setStatusMessage('Restoring backup...');
     try {
-      await window.electron.invoke('backup:restore', backupId);
+      await window.electron.backup.restore(backupId);
       setStatusMessage('Backup restored successfully!');
     } catch (error: any) {
       setStatusMessage(`Error: ${error.message}`);
@@ -68,7 +68,7 @@ export const BackupPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Socke
 
     setLoading(true);
     try {
-      await window.electron.invoke('backup:delete', backupId);
+      await window.electron.backup.delete(backupId);
       setStatusMessage('Backup deleted successfully!');
       await loadBackups();
     } catch (error: any) {
@@ -99,12 +99,14 @@ export const BackupPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Socke
     loadBackups();
 
     // Escuchar eventos de estado
-    const unsubscribe = window.electron.on('backup:status', (message: string) => {
+    const unsubscribe = ((window.electron as any).on('backup:status', (message: string) => {
       setStatusMessage(message);
-    });
+    }) || (() => {})) as any;
 
     return () => {
-      unsubscribe();
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
     };
   }, []);
 

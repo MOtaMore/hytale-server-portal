@@ -1,0 +1,78 @@
+[package]
+name = "hytale-server-portal"
+version = "2.0.0"
+description = "Hytale Server Manager - Desktop application for managing Hytale servers"
+authors = ["MOtaMore <notuse@motamore.com>"]
+license = "MIT"
+repository = "https://github.com/MOtaMore/hytale-server-portal"
+edition = "2021"
+rust-version = "1.77.2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.3", features = [] }
+
+[dependencies]
+# Tauri core
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+tauri = { version = "2.9.5", features = ["test"] }
+tauri-plugin-log = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# Cryptography (bcrypt replacement)
+bcrypt = "0.15"
+sha2 = "0.10"
+hex = "0.4"
+aes-gcm = "0.10"
+rand = "0.8"
+
+# JWT
+jsonwebtoken = "9"
+chrono = { version = "0.4", features = ["serde"] }
+
+# HTTP Server & WebSocket (Socket.io replacement)
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+socketioxide = { version = "0.14", features = ["state"] }
+
+# File operations
+walkdir = "2"
+zip = "0.6"
+flate2 = "1.0"
+
+# Process management
+which = "6"
+
+# Database/Storage (for user data)
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# HTTP Client (for downloads)
+reqwest = { version = "0.11", features = ["json", "stream"] }
+futures-util = "0.3"
+
+# System info
+sysinfo = "0.30"
+
+# Discord webhook
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# UUID generation
+uuid = { version = "1", features = ["v4", "serde"] }

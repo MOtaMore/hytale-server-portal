@@ -59,8 +59,8 @@ export const DiscordPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Sock
     try {
       setTesting(true);
       setStatusMessage('Enviando mensaje de prueba...');
-      const result = await window.electron.discord.test();
-      setStatusMessage(result.message);
+      const result = (await window.electron.discord.test()) as any;
+      setStatusMessage(result?.message || (result ? 'Conexión exitosa' : 'Conexión fallida'));
       setTimeout(() => setStatusMessage(''), 5000);
     } catch (error) {
       setStatusMessage(`${I18nManager.t('common.error')}: ${error}`);

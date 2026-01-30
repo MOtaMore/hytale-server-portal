@@ -51,14 +51,10 @@ export default function LocalAccountSetup({ onSuccess }: LocalAccountSetupProps)
     setIsLoading(true);
 
     try {
-      // Guardar credenciales locales encriptadas
-      const encryptedPassword = EncryptionManager.encrypt(password);
-      const passwordHash = EncryptionManager.hashPassword(password);
-
+      // Send plain password - backend will hash it properly
       await window.electron.auth.register({
         username: username.trim(),
-        encryptedPassword,
-        passwordHash,
+        password: password, // Plain text password - backend handles hashing
       });
 
       // Limpiar formulario

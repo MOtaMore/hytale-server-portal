@@ -54,9 +54,33 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
             }
           });
         } else {
-          // Modo local: obtener estado desde electron
-          const result = await window.electron.download.loadSavedState();
-          if (result.success && result.state) {
+          // Modo local: primero intentar cargar ruta del servidor guardada
+          try {
+            const savedPath = await window.electron.server.getPath();
+            console.log('[DownloadManager] Loaded server path from config:', savedPath);
+            if (savedPath) {
+              setSelectedPath(savedPath);
+              // Verificar si está instalado
+              const isInstalledResult = await window.electron.files.isServerInstalled(savedPath) as any;
+              if (isInstalledResult?.installed) {
+                console.log('[DownloadManager] Server detected at saved path');
+                setCliReady(true);
+                setSetupStep('complete');
+                setDownloadState({
+                  status: 'COMPLETED',
+                  progress: 100,
+                  message: t('download.server_already_installed'),
+                });
+                return;
+              }
+            }
+          } catch (err) {
+            console.warn('[DownloadManager] Could not load server path:', err);
+          }
+          
+          // Luego cargar estado de descarga
+          const result = (await window.electron.download.loadSavedState()) as any;
+          if (result?.success && result?.state) {
             const saved = result.state;
             setDownloadState(saved);
             
@@ -65,8 +89,8 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
               setSelectedPath(saved.serverPath);
               
               // Detectar si el servidor ya está instalado
-              const isInstalledResult = await window.electron.files.isServerInstalled(saved.serverPath);
-              if (isInstalledResult.success && isInstalledResult.isInstalled) {
+              const isInstalledResult = (await window.electron.files.isServerInstalled(saved.serverPath)) as any;
+              if (isInstalledResult.installed) {
                 setCliReady(true);
                 setSetupStep('complete');
                 return;
@@ -114,7 +138,7 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
     if (downloadState.status === 'DOWNLOADING_SERVER') {
       const interval = setInterval(async () => {
         try {
-          const state = await window.electron.download.getState();
+          const state = (await window.electron.download.getState()) as any;
           setDownloadState(state);
         } catch (error) {
           console.error('Error polling download state:', error);
@@ -130,39 +154,64 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
    */
   const handleSelectFolder = useCallback(async () => {
     try {
-      const result = await window.electron.dialog.openDirectory();
+      const result = (await window.electron.dialog.openDirectory()) as any;
+      console.log('[FOLDER SELECTION] Dialog result:', result);
       
       if (result && !result.canceled && result.filePaths && result.filePaths[0]) {
         const selectedFolder = result.filePaths[0];
-        setSelectedPath(selectedFolder);
-        
-        // Guardar la ruta del servidor también
-        window.electron.server.setPath(selectedFolder).catch(() => {});
-        
-        // Detectar si el servidor ya está instalado en esta carpeta
-        try {
-          const isInstalledResult = await window.electron.files.isServerInstalled(selectedFolder);
-          if (isInstalledResult.success && isInstalledResult.isInstalled) {
-            // El servidor ya está instalado, mostrar opción de reinstalar/actualizar
-            setCliReady(true);
-            setSetupStep('complete');
-            setDownloadState({
-              status: 'COMPLETED',
-              progress: 100,
-              message: t('download.server_already_installed'),
-            });
-          } else {
-            // No está instalado, mostrar opciones de descarga
-            setSetupStep('select');
-          }
-        } catch (err) {
-          console.warn('Could not check if server is installed:', err);
-          setSetupStep('select');
-        }
+        console.log('[FOLDER SELECTION] Selected folder:', selectedFolder);
+        await handlePathChange(selectedFolder);
       }
     } catch (error) {
       console.error('Error selecting folder:', error);
       alert(t('download.error') + ': ' + error);
+    }
+  }, [t]);
+
+  /**
+   * Handle path change (from dialog or manual input)
+   */
+  const handlePathChange = useCallback(async (selectedFolder: string) => {
+    if (!selectedFolder || selectedFolder.trim() === '') {
+      console.warn('[PATH] Empty path provided');
+      return;
+    }
+
+    console.log('[PATH] Setting path:', selectedFolder);
+    setSelectedPath(selectedFolder);
+    
+    // Guardar la ruta del servidor también
+    try {
+      await window.electron.server.setPath(selectedFolder);
+      console.log('[PATH] Server path saved');
+    } catch (err) {
+      console.error('[PATH] Failed to save server path:', err);
+    }
+    
+    // Detectar si el servidor ya está instalado en esta carpeta
+    try {
+      console.log('[DETECTION] Checking if server is installed...');
+      const isInstalledResult = (await window.electron.files.isServerInstalled(selectedFolder)) as any;
+      console.log('[DETECTION] Result:', isInstalledResult);
+      
+      if (isInstalledResult.installed) {
+        // El servidor ya está instalado, mostrar opción de reinstalar/actualizar
+        console.log('[DETECTION] Server detected as installed');
+        setCliReady(true);
+        setSetupStep('complete');
+        setDownloadState({
+          status: 'COMPLETED',
+          progress: 100,
+          message: t('download.server_already_installed'),
+        });
+      } else {
+        // No está instalado, mostrar opciones de descarga
+        console.log('[DETECTION] Server not detected, showing download options');
+        setSetupStep('select');
+      }
+    } catch (err) {
+      console.error('[DETECTION] Error checking if server is installed:', err);
+      setSetupStep('select');
     }
   }, [t]);
 
@@ -179,7 +228,7 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
       setIsLoading(true);
       setSetupStep('setup');
 
-      const result = await window.electron.download.setupFolder(selectedPath);
+      const result = (await window.electron.download.setupFolder(selectedPath)) as any;
 
       if (!result.success) {
         const errorMessage = result.error || result.state?.error || 'Unknown error during setup';
@@ -237,7 +286,7 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
 
       // Esperar a que se complete
       const checkCompletion = setInterval(async () => {
-        const state = await window.electron.download.getState();
+        const state = (await window.electron.download.getState()) as any;
         setDownloadState(state);
 
         if (state.status === 'COMPLETED') {
@@ -279,7 +328,7 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
   const handleRetry = useCallback(async () => {
     try {
       setIsLoading(true);
-      await window.electron.download.reset();
+      await (window.electron as any).download.reset();
       setDownloadState({
         status: 'IDLE',
         progress: 0,
@@ -307,7 +356,7 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
       setIsLoading(true);
       
       // Reset del estado
-      await window.electron.download.reset();
+      await (window.electron as any).download.reset();
       setDownloadState({
         status: 'IDLE',
         progress: 0,
@@ -405,6 +454,18 @@ export default function DownloadManager({ onComplete, isRemoteMode = false, remo
               type="text"
               value={selectedPath}
               onChange={(e) => setSelectedPath(e.target.value)}
+              onBlur={(e) => {
+                // When user finishes typing/pasting, check if server is installed
+                if (e.target.value && e.target.value.trim() !== '') {
+                  handlePathChange(e.target.value.trim());
+                }
+              }}
+              onKeyDown={(e) => {
+                // Also check on Enter key
+                if (e.key === 'Enter' && e.currentTarget.value.trim() !== '') {
+                  handlePathChange(e.currentTarget.value.trim());
+                }
+              }}
               placeholder={t('download.select_folder')}
               className="folder-input"
               disabled={setupStep !== 'select'}

@@ -131,10 +131,12 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
       
       // Escuchar eventos de actualización de logs desde el main process
       window.electron.on('server:logs-updated', (newLogs: string[]) => {
-        setLogs(newLogs);
+        console.log('[SERVER UI] New logs received:', newLogs);
+        setLogs(prevLogs => [...prevLogs, ...newLogs]);
       });
 
       window.electron.on('server:status-changed', (state: ServerState) => {
+        console.log('[SERVER UI] Status changed:', state);
         setStatus(state.status);
       });
 
@@ -179,6 +181,10 @@ export default function ServerControlPanel({ serverPath, isRemoteMode = false, r
           .finally(() => setIsLoading(false));
       } else {
         // Modo local (IPC)
+        // Clear logs before starting
+        setLogs([]);
+        await window.electron.server.clearLogs();
+        
         const result = await window.electron.server.start();
         if (result.success) {
           setStatus(result.state.status);

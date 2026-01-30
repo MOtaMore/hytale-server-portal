@@ -70,6 +70,7 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
   const [newEmail, setNewEmail] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [selectedRole, setSelectedRole] = useState<'admin' | 'moderator' | 'viewer'>('viewer');
+  const [roleTouched, setRoleTouched] = useState(false);
 
   // Connection methods
   const [ipv4, setIpv4] = useState('');
@@ -93,7 +94,7 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
 
   const loadRemoteConfig = useCallback(async () => {
     try {
-      const result = await window.electron.invoke('remote:get-config');
+      const result = (await window.electron.remote.getConfig()) as any;
       if (result) {
         setRemoteEnabled(result.enabled);
         setIpv4(result.ipv4 || '');
@@ -111,21 +112,28 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
 
   const loadUsers = useCallback(async () => {
     try {
-      const result = await window.electron.invoke('remote:get-users');
+      const result = (await window.electron.remote.getUsers()) as any;
       setUsers(result || []);
     } catch (err: any) {
-      setError('Error al cargar usuarios');
+      setError(t('remote.error_load_users'));
     }
-  }, []);
+  }, [t]);
 
   const loadPermissions = useCallback(async () => {
     try {
-      const result = await window.electron.invoke('remote:get-permissions');
-      setAllPermissions(result || []);
+      const result = (await window.electron.remote.getPermissions()) as any;
+      const permissions = Array.isArray(result) ? result : [];
+      const normalized = permissions.map((perm: Permission) => ({
+        ...perm,
+        name: t(`remote.permissions_list.${perm.id}`),
+        description: perm.description || '',
+      }));
+      setAllPermissions(normalized);
     } catch (err: any) {
       console.error('Error cargando permisos:', err);
+      setError(t('remote.error_load_permissions'));
     }
-  }, []);
+  }, [t]);
 
   const loadSocketServerStatus = useCallback(async () => {
     try {
@@ -141,24 +149,80 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
   const handleToggleRemote = async () => {
     try {
       setLoading(true);
-      await window.electron.invoke('remote:set-enabled', !remoteEnabled);
+      setError('');
+      console.log('[REMOTE] Toggling remote access, current state:', remoteEnabled);
+      
+      await window.electron.remote.setEnabled(!remoteEnabled);
+      
       setRemoteEnabled(!remoteEnabled);
       setSuccess(remoteEnabled ? t('remote.disabled') : t('remote.enabled'));
       setTimeout(() => setSuccess(''), 3000);
+      
+      console.log('[REMOTE] Remote access toggled successfully');
     } catch (err: any) {
-      setError(err.message || t('common.error'));
+      console.error('[REMOTE] Error toggling remote access:', err);
+      setError(err.toString() || t('common.error'));
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApplyRole = (role: 'admin' | 'moderator' | 'viewer') => {
-    setSelectedRole(role);
-    const result = window.electron.invoke('remote:get-preset-permissions', role);
-    if (result instanceof Promise) {
-      result.then((perms) => setSelectedPermissions(perms));
-    }
+  const getRolePermissions = (
+    role: 'admin' | 'moderator' | 'viewer',
+    permissions: Permission[],
+  ) => {
+    const available = new Set(permissions.map((perm) => perm.id));
+    const pick = (ids: string[]) => ids.filter((id) => available.has(id));
+
+    const admin = permissions.map((perm) => perm.id);
+    const moderator = pick([
+      'server_start',
+      'server_stop',
+      'server_restart',
+      'server_view_status',
+      'server_view_logs',
+      'config_read',
+      'backup_create',
+      'backup_restore',
+      'backup_view',
+      'files_upload',
+      'files_download',
+      'files_view',
+      'discord_send_messages',
+      'discord_view',
+      'discord_view_notifications',
+    ]);
+    const viewer = pick([
+      'server_view_status',
+      'server_view_logs',
+      'config_read',
+      'backup_view',
+      'files_view',
+      'discord_view',
+      'discord_view_notifications',
+    ]);
+
+    const roleMap: Record<'admin' | 'moderator' | 'viewer', string[]> = {
+      admin,
+      moderator,
+      viewer,
+    };
+
+    return roleMap[role];
   };
+
+  const handleApplyRole = (role: 'admin' | 'moderator' | 'viewer') => {
+    setRoleTouched(true);
+    setSelectedRole(role);
+  };
+
+  useEffect(() => {
+    if (!roleTouched || !allPermissions.length) {
+      return;
+    }
+
+    setSelectedPermissions(getRolePermissions(selectedRole, allPermissions));
+  }, [roleTouched, selectedRole, allPermissions]);
 
   const handlePermissionToggle = (permId: string) => {
     setSelectedPermissions((prev) =>
@@ -172,12 +236,11 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
       setLoading(true);
       setError('');
 
-      const result = await window.electron.invoke('remote:create-user', {
-        username: newUsername,
-        password: newPassword,
-        email: newEmail,
-        permissions: selectedPermissions,
-      });
+      const result = (await window.electron.remote.createUser(
+        newUsername,
+        newPassword,
+        selectedPermissions
+      )) as any;
 
       setSuccess(t('remote.user_created'));
       setNewUsername('');
@@ -199,7 +262,7 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
 
     try {
       setLoading(true);
-      await window.electron.invoke('remote:delete-user', userId);
+      await window.electron.remote.deleteUser(userId);
       setSuccess(t('remote.user_deleted'));
       await loadUsers();
       setTimeout(() => setSuccess(''), 3000);
@@ -213,21 +276,23 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
   const handleUpdateConnectionMethods = async () => {
     try {
       setLoading(true);
-      const methods = [];
+      const methods: string[] = [];
       if (allowMethods.ip) methods.push('ip');
       if (allowMethods.tunnel) methods.push('tunnel');
 
-      await window.electron.invoke('remote:set-connection-methods', {
+      await window.electron.remote.saveConfig({
+        ipv4,
+        ipv6,
+        tunnelUrl,
         methods,
-        ipv4: allowMethods.ip ? ipv4 : undefined,
-        ipv6: allowMethods.ip ? ipv6 : undefined,
-        tunnelUrl: allowMethods.tunnel ? tunnelUrl : undefined,
       });
 
-      setSuccess('Métodos de conexión actualizados');
+      await loadRemoteConfig();
+
+      setSuccess(t('remote.connection_saved'));
       setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError(err.message || 'Error al actualizar métodos');
+      setError(err.message || t('remote.error_save_connection'));
     } finally {
       setLoading(false);
     }
@@ -248,14 +313,14 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
         <h2>🌐 {t('remote.title')}</h2>
         <div className="remote-status">
           <span className={`status-badge ${remoteEnabled ? 'active' : 'inactive'}`}>
-            {remoteEnabled ? 'Activo' : 'Inactivo'}
+            {remoteEnabled ? t('remote.status_active') : t('remote.status_inactive')}
           </span>
           <button
             className={`btn-toggle-remote ${remoteEnabled ? 'disable' : 'enable'}`}
             onClick={handleToggleRemote}
             disabled={loading}
           >
-            {remoteEnabled ? 'Desactivar' : 'Activar'}
+            {remoteEnabled ? t('remote.disable_remote') : t('remote.enable_remote')}
           </button>
         </div>
       </div>
@@ -268,76 +333,63 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
           className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`}
           onClick={() => setActiveTab('overview')}
         >
-          📋 Resumen
+          📋 {t('remote.overview')}
         </button>
         <button
           className={`tab-button ${activeTab === 'users' ? 'active' : ''}`}
           onClick={() => setActiveTab('users')}
         >
-          👥 Usuarios
+          👥 {t('remote.users')}
         </button>
         <button
           className={`tab-button ${activeTab === 'methods' ? 'active' : ''}`}
           onClick={() => setActiveTab('methods')}
         >
-          🔗 Conexiones
+          🔗 {t('remote.connection_methods')}
         </button>
       </div>
 
       {activeTab === 'overview' && (
         <div className="remote-overview">
           <div className="info-box">
-            <h3>Estado del Acceso Remoto</h3>
+            <h3>{t('remote.status_title')}</h3>
             <p>
-              El acceso remoto está <strong>{remoteEnabled ? 'ACTIVO' : 'INACTIVO'}</strong>
+              <strong>{remoteEnabled ? t('remote.status_active') : t('remote.status_inactive')}</strong>
             </p>
-            <p>Total de usuarios remotos: {users.length}</p>
-            <p>Usuarios activos: {users.filter((u) => u.isActive).length}</p>
+            <p>{t('remote.total_users')}: {users.length}</p>
+            <p>{t('remote.active_users')}: {users.filter((u) => u.isActive).length}</p>
           </div>
 
           <div className="info-box">
-            <h3>🌐 Servidor Socket.io</h3>
+            <h3>🌐 {t('remote.socket_status')}</h3>
             <p>
-              Estado: <strong className={socketServerRunning ? 'status-online' : 'status-offline'}>
-                {socketServerRunning ? '● EN LÍNEA' : '○ DESCONECTADO'}
+              <strong className={socketServerRunning ? 'status-online' : 'status-offline'}>
+                {socketServerRunning ? t('remote.server_online') : t('remote.server_offline')}
               </strong>
             </p>
-            <p>Puerto: {serverPort}</p>
-            <p>Clientes conectados: {connectedClients}</p>
+            <p>{t('remote.socket_port')}: {serverPort}</p>
+            <p>{connectedClients} {t('remote.socket_clients')}</p>
             {!socketServerRunning && remoteEnabled && (
-              <div style={{
-                background: '#dc3545',
-                color: 'white',
-                padding: '12px',
-                borderRadius: '4px',
-                marginTop: '10px',
-                fontWeight: 'bold'
-              }}>
-                ⚠️ SERVIDOR NO DISPONIBLE
-                <div style={{ fontSize: '12px', fontWeight: 'normal', marginTop: '5px' }}>
-                  El servidor Socket.io no está corriendo. Los clientes remotos NO podrán conectarse.
-                  Verifica que el acceso remoto esté habilitado y que no haya errores en la consola.
-                </div>
-              </div>
+              <p className="warning-text">⚠️ {t('remote.socket_warning')}</p>
             )}
           </div>
 
           <div className="info-box">
-            <h3>Métodos Disponibles</h3>
+            <h3>🔌 {t('remote.methods_available')}</h3>
             <ul>
-              {allowMethods.ip && <li>✓ Conexión por IP (IPv4/IPv6)</li>}
-              {allowMethods.tunnel && <li>✓ Conexión por Túnel (Hamachi/PlayitGG)</li>}
-              {!allowMethods.ip && !allowMethods.tunnel && <li>✗ Sin métodos configurados</li>}
+              {allowMethods.ip && <li>✓ {t('remote.method_ip')}</li>}
+              {allowMethods.tunnel && <li>✓ {t('remote.method_tunnel')}</li>}
+              {!allowMethods.ip && !allowMethods.tunnel && <li>✗ {t('remote.no_methods')}</li>}
             </ul>
           </div>
 
           <div className="info-box warning">
-            <h3>⚠️ Consideraciones de Seguridad</h3>
+            <h3>⚠️ {t('remote.security_title')}</h3>
             <ul>
-              <li>Los usuarios remotos pueden tener permisos limitados</li>
-              <li>Las contraseñas se encriptan con bcrypt</li>
-              <li>Los tokens expiran cada 7 días</li>
-              <li>Revisa regularmente los accesos remotos</li>
+              <li>{t('remote.security_permissions')}</li>
+              <li>{t('remote.security_encryption')}</li>
+              <li>{t('remote.security_tokens')}</li>
+              <li>{t('remote.security_review')}</li>
             </ul>
           </div>
         </div>
@@ -426,8 +478,8 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
                             checked={selectedPermissions.includes(perm.id)}
                             onChange={() => handlePermissionToggle(perm.id)}
                           />
-                          <span>{t(`remote.permissions_list.${perm.id}`)}</span>
-                          <small>{perm.description}</small>
+                          <span>{perm.name || t(`remote.permissions_list.${perm.id}`)}</span>
+                          {perm.description && <small>{perm.description}</small>}
                         </label>
                       ))}
                     </div>
@@ -453,7 +505,7 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
                     <h4>{user.username}</h4>
                     {user.email && <p className="user-email">{user.email}</p>}
                     <p className="user-perms">
-                      {user.permissions.length} permisos | Creado:{' '}
+                      {user.permissions.length} {t('remote.permissions')} | Creado:{' '}
                       {new Date(user.createdAt).toLocaleDateString()}
                     </p>
                     {user.lastAccess && (
@@ -480,7 +532,7 @@ export const RemoteAccessPanel: React.FC<RemoteAccessPanelProps> = ({ t }) => {
 
       {activeTab === 'methods' && (
         <div className="remote-methods">
-          <h3>🔗 Métodos de Conexión</h3>
+          <h3>🔗 {t('remote.connection_methods')}</h3>
 
           <div className="method-option">
             <label className="method-toggle">

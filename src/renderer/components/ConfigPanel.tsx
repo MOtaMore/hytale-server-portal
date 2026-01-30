@@ -31,8 +31,8 @@ export const ConfigPanel: React.FC<{isRemoteMode?: boolean, remoteSocket?: Socke
 
   const loadSystemResources = async () => {
     try {
-      const resources = await window.electron.config.getSystemResources();
-      setSystemResources(resources);
+      const resources = (await window.electron.config.getSystemResources()) as any;
+      setSystemResources(resources || null);
     } catch (error) {
       console.error('Error cargando recursos del sistema:', error);
     }

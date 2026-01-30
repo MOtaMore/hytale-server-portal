@@ -139,7 +139,7 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
         }
 
         // Leer contenido
-        const result = await window.electron.files.read(file.path);
+        const result = (await window.electron.files.read(file.path)) as any;
 
         if (result.success) {
           setSelectedFile(file);
@@ -232,9 +232,10 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
   const handleUploadFiles = useCallback(async () => {
     try {
       // Usar el dialog nativo de Electron para seleccionar archivos
-      const filePaths = await window.electron.dialog.openFiles();
-      if (!filePaths || filePaths.length === 0) return;
+      const result = await window.electron.dialog.openFiles() as any;
+      if (!result || result.canceled || !result.filePaths || result.filePaths.length === 0) return;
 
+      const filePaths = result.filePaths;
       setIsLoading(true);
       setError('');
 
@@ -284,7 +285,7 @@ export default function FileManager({ serverPath, isRemoteMode = false, remoteSo
       } else {
         // Local: usar Electron IPC
         try {
-          const result = await window.electron.files.upload(currentPath, filePaths);
+          const result = (await window.electron.files.upload(currentPath, filePaths)) as any;
 
           if (result.success || result.uploaded.length > 0) {
             const uploadedCount = result.uploaded.length;
