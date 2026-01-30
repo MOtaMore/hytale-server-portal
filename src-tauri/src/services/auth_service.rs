@@ -50,6 +50,21 @@ impl AuthService {
             [],
         )?;
         
+        // Migration: Add email column if it doesn't exist (for old databases)
+        let email_exists: Result<i64, _> = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='email'",
+            [],
+            |row| row.get(0),
+        );
+        
+        if let Ok(0) = email_exists {
+            eprintln!("[AUTH] Migration: Adding email column to users table");
+            conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''", [])?;
+            // Update existing users with default email
+            conn.execute("UPDATE users SET email = username || '@local' WHERE email = ''", [])?;
+            eprintln!("[AUTH] Migration: Email column added successfully");
+        }
+        
         // Create sessions table for tracking active sessions
         conn.execute(
             "CREATE TABLE IF NOT EXISTS sessions (
