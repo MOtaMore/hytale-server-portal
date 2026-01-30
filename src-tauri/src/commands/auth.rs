@@ -18,21 +18,27 @@ pub async fn register(
     password: String,
     state: State<'_, AppState>,
 ) -> Result<AuthResponse, String> {
+    eprintln!("[AUTH CMD] Register command called - username: {}, email: {}", username, email);
     let db_path = state.db_path.lock().unwrap().clone();
     let auth_service = AuthService::new(&db_path)?;
     
     match auth_service.register(&username, &email, &password).await {
-        Ok(result_user) => Ok(AuthResponse {
-            success: true,
-            user: Some(User {
-                id: result_user.id,
-                username: result_user.username,
-                email: result_user.email,
-            }),
-            message: None,
-            token: Some(result_user.session_token),
-        }),
-        Err(e) => Ok(AuthResponse {
+        Ok(result_user) => {
+            eprintln!("[AUTH CMD] Registration successful for user: {}", result_user.username);
+            Ok(AuthResponse {
+                success: true,
+                user: Some(User {
+                    id: result_user.id,
+                    username: result_user.username,
+                    email: result_user.email,
+                }),
+                message: None,
+                token: Some(result_user.session_token),
+            })
+        },
+        Err(e) => {
+            eprintln!("[AUTH CMD] Registration failed: {}", e);
+            Ok(AuthResponse {
             success: false,
             user: None,
             message: Some(e.to_string()),

@@ -86,6 +86,7 @@ impl AuthService {
         eprintln!("[AUTH] Register attempt for user: {}", username);
         
         // Check if user already exists
+        eprintln!("[AUTH] Checking if user exists...");
         let exists: bool = conn.query_row(
             "SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)",
             rusqlite::params![username],
@@ -93,9 +94,11 @@ impl AuthService {
         )?;
         
         if exists {
-            eprintln!("[AUTH] User already exists");
+            eprintln!("[AUTH] User already exists: {}", username);
             return Err(anyhow!("User already exists"));
         }
+        
+        eprintln!("[AUTH] User does not exist, proceeding with registration");
         
         // Hash password
         let password_hash = hash(password, DEFAULT_COST)
@@ -105,11 +108,13 @@ impl AuthService {
         // Generate ID
         let id = uuid::Uuid::new_v4().to_string();
         let created_at = chrono::Utc::now().to_rfc3339();
+        eprintln!("[AUTH] About to insert user - ID: {}, username: {}, email: {}", id, username, email);
         
         // Insert user
         let mut stmt = conn.prepare(
             "INSERT INTO users (id, username, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)"
         )?;
+        eprintln!("[AUTH] Statement prepared, executing...");
         let rows = stmt.execute(rusqlite::params![&id, username, email, &password_hash, &created_at])?;
         eprintln!("[AUTH] User inserted into DB, rows affected: {}", rows);
         eprintln!("[AUTH] User ID: {}", id);
