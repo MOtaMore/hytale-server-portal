@@ -1,13 +1,14 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use crate::AppState;
-use crate::services::auth_service::{AuthService, User, LoginCredentials};
+use crate::services::auth_service::{AuthService, User, AuthResultUser, LoginCredentials};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthResponse {
     pub success: bool,
     pub user: Option<User>,
     pub message: Option<String>,
+    pub token: Option<String>,
 }
 
 #[tauri::command]
@@ -21,15 +22,21 @@ pub async fn register(
     let auth_service = AuthService::new(&db_path)?;
     
     match auth_service.register(&username, &email, &password).await {
-        Ok(user) => Ok(AuthResponse {
+        Ok(result_user) => Ok(AuthResponse {
             success: true,
-            user: Some(user),
+            user: Some(User {
+                id: result_user.id,
+                username: result_user.username,
+                email: result_user.email,
+            }),
             message: None,
+            token: Some(result_user.session_token),
         }),
         Err(e) => Ok(AuthResponse {
             success: false,
             user: None,
             message: Some(e.to_string()),
+            token: None,
         }),
     }
 }
@@ -46,15 +53,21 @@ pub async fn login(
     let credentials = LoginCredentials { username, password };
     
     match auth_service.login(&credentials).await {
-        Ok(user) => Ok(AuthResponse {
+        Ok(result_user) => Ok(AuthResponse {
             success: true,
-            user: Some(user),
+            user: Some(User {
+                id: result_user.id,
+                username: result_user.username,
+                email: result_user.email,
+            }),
             message: None,
+            token: Some(result_user.session_token),
         }),
         Err(e) => Ok(AuthResponse {
             success: false,
             user: None,
             message: Some(e.to_string()),
+            token: None,
         }),
     }
 }

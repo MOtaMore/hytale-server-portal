@@ -10,6 +10,14 @@ pub struct User {
     pub email: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AuthResultUser {
+    pub id: String,
+    pub username: String,
+    pub email: String,
+    pub session_token: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct LoginCredentials {
     pub username: String,
@@ -41,10 +49,23 @@ impl AuthService {
             )",
             [],
         )?;
+        
+        // Create sessions table for tracking active sessions
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS sessions (
+                session_token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            )",
+            [],
+        )?;
+        
         Ok(())
     }
     
-    pub async fn register(&self, username: &str, email: &str, password: &str) -> anyhow::Result<User> {
+    pub async fn register(&self, username: &str, email: &str, password: &str) -> anyhow::Result<AuthResultUser> {
         let conn = Connection::open(&self.db_path)?;
         
         eprintln!("[AUTH] Register attempt for user: {}", username);
@@ -77,14 +98,26 @@ impl AuthService {
         stmt.execute(rusqlite::params![&id, username, email, &password_hash, &created_at])?;
         eprintln!("[AUTH] User inserted into DB");
         
-        Ok(User {
+        // Create session for the newly registered user
+        let session_token = uuid::Uuid::new_v4().to_string();
+        let session_created_at = chrono::Utc::now().to_rfc3339();
+        let expires_at = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
+        
+        let mut session_stmt = conn.prepare(
+            "INSERT INTO sessions (session_token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
+        )?;
+        session_stmt.execute(rusqlite::params![&session_token, &id, &session_created_at, &expires_at])?;
+        eprintln!("[AUTH] Session created for user: {}", username);
+        
+        Ok(AuthResultUser {
             id,
             username: username.to_string(),
             email: email.to_string(),
+            session_token,
         })
     }
     
-    pub async fn login(&self, credentials: &LoginCredentials) -> anyhow::Result<User> {
+    pub async fn login(&self, credentials: &LoginCredentials) -> anyhow::Result<AuthResultUser> {
         let conn = Connection::open(&self.db_path)?;
         
         eprintln!("[AUTH] Login attempt for user: {}", credentials.username);
@@ -114,11 +147,26 @@ impl AuthService {
         }
         
         eprintln!("[AUTH] Password verified successfully");
-        Ok(User { id, username, email })
+        
+        // Create session for the logged-in user
+        let session_token = uuid::Uuid::new_v4().to_string();
+        let session_created_at = chrono::Utc::now().to_rfc3339();
+        let expires_at = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
+        
+        let mut session_stmt = conn.prepare(
+            "INSERT INTO sessions (session_token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
+        )?;
+        session_stmt.execute(rusqlite::params![&session_token, &id, &session_created_at, &expires_at])?;
+        eprintln!("[AUTH] Session created for user: {}", username);
+        
+        Ok(AuthResultUser { id, username, email, session_token })
     }
     
     pub async fn logout(&self) -> anyhow::Result<bool> {
-        // In a stateless system, logout is usually handled on frontend
+        let conn = Connection::open(&self.db_path)?;
+        // Delete all sessions for this user (we would need user_id, but this is simpler)
+        // In a real app, you'd track which session belongs to this app instance
+        conn.execute("DELETE FROM sessions", [])?;
         Ok(true)
     }
     
@@ -133,8 +181,33 @@ impl AuthService {
     }
     
     pub async fn get_current_user(&self) -> anyhow::Result<Option<User>> {
-        // TODO: Implement session management
-        // For now, return None
-        Ok(None)
+        let conn = Connection::open(&self.db_path)?;
+        
+        // Check if there's a valid active session
+        let now = chrono::Utc::now().to_rfc3339();
+        
+        let result = conn.query_row(
+            "SELECT u.id, u.username, u.email FROM users u 
+             INNER JOIN sessions s ON u.id = s.user_id 
+             WHERE s.expires_at > ? 
+             LIMIT 1",
+            rusqlite::params![&now],
+            |row| Ok(User {
+                id: row.get(0)?,
+                username: row.get(1)?,
+                email: row.get(2)?,
+            }),
+        );
+        
+        match result {
+            Ok(user) => {
+                eprintln!("[AUTH] Active session found for user: {}", user.username);
+                Ok(Some(user))
+            }
+            Err(_) => {
+                eprintln!("[AUTH] No active session found");
+                Ok(None)
+            }
+        }
     }
 }

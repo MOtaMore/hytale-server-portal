@@ -37,6 +37,14 @@ export default function LoginForm({ onSuccess }: LoginFormProps) {
       });
 
       if (result.success) {
+        // Save session token to localStorage
+        if (result.token) {
+          localStorage.setItem('localSession', JSON.stringify({
+            token: result.token,
+            username: result.user?.username,
+            timestamp: Date.now(),
+          }));
+        }
         setUsername('');
         setPassword('');
         onSuccess();

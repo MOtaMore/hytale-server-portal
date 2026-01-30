@@ -44,10 +44,30 @@ export default function App() {
         }
       }
 
-      // Si no hay sesión remota válida, verificar usuario local
+      // Verificar sesión local en localStorage
+      const localSessionStr = localStorage.getItem('localSession');
+      console.log('[App] Checking local session... exists:', !!localSessionStr);
+      
+      if (localSessionStr) {
+        try {
+          const localSession = JSON.parse(localSessionStr);
+          // Verificar que la sesión sea válida (el token existe)
+          if (localSession.token) {
+            console.log('[App] Local session found, token exists');
+            setSessionType('local');
+            setIsAuthenticated(true);
+            return;
+          }
+        } catch (e) {
+          console.error('[App] Invalid local session:', e);
+          localStorage.removeItem('localSession');
+        }
+      }
+
+      // Si no hay sesión en localStorage, verificar con el backend
       const user = await window.electron.auth.getCurrentUser();
       if (user) {
-        console.log('[App] Local session found');
+        console.log('[App] Local session found in backend');
         setSessionType('local');
         setIsAuthenticated(true);
       } else {
@@ -63,6 +83,7 @@ export default function App() {
   const handleLogout = () => {
     // Limpiar ambas sesiones posibles
     localStorage.removeItem('remoteSession');
+    localStorage.removeItem('localSession');
     setSessionType(null);
     setIsAuthenticated(false);
     setAuthPageKey(prev => prev + 1); // Force re-render AuthPage

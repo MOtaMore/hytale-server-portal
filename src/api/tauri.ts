@@ -58,7 +58,7 @@ const onEvent = (event: string, callback: (payload: any) => void) => {
 // Auth API
 export const authAPI = {
   register: (params: { username: string; password?: string; encryptedPassword?: string; passwordHash?: string; email?: string }) =>
-    invoke<{ success: boolean; user?: any; message?: string }>('register', { 
+    invoke<{ success: boolean; user?: any; message?: string; token?: string }>('register', { 
       username: params.username,
       email: params.email || `${params.username}@local`,
       // IMPORTANT: Use plain password first, backend will hash it properly
@@ -66,10 +66,10 @@ export const authAPI = {
     }),
   
   createAccount: (username: string, email: string, password: string) =>
-    invoke<{ success: boolean; user?: any; message?: string; error?: string }>('register', { username, email, password }),
+    invoke<{ success: boolean; user?: any; message?: string; error?: string; token?: string }>('register', { username, email, password }),
   
   login: (params: { username: string; password: string }) =>
-    invoke<{ success: boolean; user?: any; message?: string; error?: string }>('login', params),
+    invoke<{ success: boolean; user?: any; message?: string; error?: string; token?: string }>('login', params),
   
   logout: () =>
     invoke<{ success: boolean }>('logout'),

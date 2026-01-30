@@ -52,10 +52,19 @@ export default function LocalAccountSetup({ onSuccess }: LocalAccountSetupProps)
 
     try {
       // Send plain password - backend will hash it properly
-      await window.electron.auth.register({
+      const result = await window.electron.auth.register({
         username: username.trim(),
         password: password, // Plain text password - backend handles hashing
       });
+
+      // Save session token to localStorage
+      if (result.token) {
+        localStorage.setItem('localSession', JSON.stringify({
+          token: result.token,
+          username: result.user?.username,
+          timestamp: Date.now(),
+        }));
+      }
 
       // Limpiar formulario
       setUsername('');
